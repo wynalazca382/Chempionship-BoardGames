@@ -1,0 +1,273 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 30px;
+    text-align: center;
+}
+
+header h1 {
+    font-size: 2.5em;
+    margin: 0;
+}
+
+.section {
+    padding: 30px;
+    display: none;
+}
+
+.section.active {
+    display: block;
+}
+
+h2 {
+    color: #667eea;
+    margin-bottom: 20px;
+    font-size: 1.8em;
+}
+
+.game-input, .player-input, .table-config {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+input[type="text"], input[type="number"] {
+    flex: 1;
+    padding: 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: border-color 0.3s;
+}
+
+input[type="text"]:focus, input[type="number"]:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+button {
+    padding: 12px 24px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 600;
+    transition: all 0.3s;
+}
+
+button:hover {
+    background: #5568d3;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+button:active {
+    transform: translateY(0);
+}
+
+.btn-primary {
+    background: #764ba2;
+    width: 100%;
+    margin-top: 20px;
+    padding: 15px;
+    font-size: 18px;
+}
+
+.btn-primary:hover {
+    background: #653a8f;
+}
+
+.btn-secondary {
+    background: #48bb78;
+    width: 100%;
+    margin-top: 20px;
+    padding: 15px;
+    font-size: 18px;
+}
+
+.btn-secondary:hover {
+    background: #38a169;
+}
+
+#selected-game {
+    margin-top: 20px;
+    padding: 15px;
+    background: #f0f4ff;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #667eea;
+    text-align: center;
+}
+
+.player-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.player-item {
+    background: #f7fafc;
+    padding: 12px;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.player-item button {
+    padding: 5px 10px;
+    background: #ef4444;
+    font-size: 14px;
+}
+
+.player-item button:hover {
+    background: #dc2626;
+}
+
+.table {
+    background: #f7fafc;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 2px solid #e0e0e0;
+}
+
+.table h3 {
+    color: #764ba2;
+    margin-bottom: 15px;
+}
+
+.table-players {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.table-player {
+    background: white;
+    padding: 10px;
+    border-radius: 6px;
+    border-left: 3px solid #667eea;
+}
+
+.scoring-table {
+    background: #f7fafc;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.scoring-table h3 {
+    color: #764ba2;
+    margin-bottom: 15px;
+}
+
+.score-input-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.score-input-group label {
+    flex: 1;
+    font-weight: 600;
+}
+
+.score-input-group input {
+    width: 100px;
+}
+
+.summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+.summary-table thead {
+    background: #667eea;
+    color: white;
+}
+
+.summary-table th, .summary-table td {
+    padding: 15px;
+    text-align: left;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.summary-table tbody tr:hover {
+    background: #f7fafc;
+}
+
+.rank-1 {
+    background: #ffd700 !important;
+    font-weight: bold;
+}
+
+.rank-2 {
+    background: #c0c0c0 !important;
+    font-weight: bold;
+}
+
+.rank-3 {
+    background: #cd7f32 !important;
+    font-weight: bold;
+}
+
+.medal {
+    font-size: 1.5em;
+    margin-right: 10px;
+}
+
+.stats-box {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.stat-item {
+    background: #f0f4ff;
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.stat-item .stat-label {
+    color: #667eea;
+    font-size: 14px;
+    margin-bottom: 5px;
+}
+
+.stat-item .stat-value {
+    color: #764ba2;
+    font-size: 24px;
+    font-weight: bold;
+}
