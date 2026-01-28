@@ -10,7 +10,8 @@ let tournament = {
     totalGamePoints: {},
     firstPlaces: {},
     highestSingleScore: {},
-    totalTieBreakers: {}
+    totalTieBreakers: {},
+    totalTieBreakersByIndex: {}
 };
 
 function createRounds(totalRounds) {
@@ -20,6 +21,22 @@ function createRounds(totalRounds) {
         tieBreakers: {},
         tournamentPoints: {}
     }));
+}
+
+const TIE_BREAKER_COUNT = 3;
+
+function normalizeTieBreakers(tieBreakers) {
+    const normalized = Array.isArray(tieBreakers) ? [...tieBreakers] : [];
+    while (normalized.length < TIE_BREAKER_COUNT) normalized.push(0);
+    return normalized.slice(0, TIE_BREAKER_COUNT);
+}
+
+function compareTieBreakers(a, b) {
+    for (let i = 0; i < TIE_BREAKER_COUNT; i++) {
+        const diff = (b[i] || 0) - (a[i] || 0);
+        if (diff !== 0) return diff;
+    }
+    return 0;
 }
 
 function readTournamentConfig() {
@@ -265,7 +282,7 @@ function displayScoringSection() {
     currentRound.tables.forEach(table => {
         table.players.forEach(player => {
             if (currentRound.scores[player] === undefined) currentRound.scores[player] = 0;
-            if (currentRound.tieBreakers[player] === undefined) currentRound.tieBreakers[player] = 0;
+            currentRound.tieBreakers[player] = normalizeTieBreakers(currentRound.tieBreakers[player]);
         });
     });
     
@@ -277,18 +294,34 @@ function displayScoringSection() {
                 ${table.players.map(player => `
                     <div class="score-input-group">
                         <label>${player}:</label>
-                        <input type="number" 
+                           <input type="number" 
                                id="score-${tournament.currentRound}-${player}" 
                                value="${currentRound.scores[player] || 0}"
                                min="0"
                                onchange="updateScore('${player}', this.value)"
-                               placeholder="Punkty z gry">
-                        <input type="number"
-                               id="tiebreaker-${tournament.currentRound}-${player}"
-                               value="${currentRound.tieBreakers[player] || 0}"
-                               min="0"
-                               onchange="updateTieBreaker('${player}', this.value)"
-                               placeholder="Tie-breaker">
+                               placeholder="Punkty z gry"
+                               title="Punkty z gry">
+                       <input type="number"
+                           id="tiebreaker-${tournament.currentRound}-${player}-1"
+                           value="${currentRound.tieBreakers[player][0] || 0}"
+                           min="0"
+                               onchange="updateTieBreaker('${player}', 0, this.value)"
+                               placeholder="TB1"
+                               title="Tie-breaker 1">
+                       <input type="number"
+                           id="tiebreaker-${tournament.currentRound}-${player}-2"
+                           value="${currentRound.tieBreakers[player][1] || 0}"
+                           min="0"
+                               onchange="updateTieBreaker('${player}', 1, this.value)"
+                               placeholder="TB2"
+                               title="Tie-breaker 2">
+                       <input type="number"
+                           id="tiebreaker-${tournament.currentRound}-${player}-3"
+                           value="${currentRound.tieBreakers[player][2] || 0}"
+                           min="0"
+                               onchange="updateTieBreaker('${player}', 2, this.value)"
+                               placeholder="TB3"
+                               title="Tie-breaker 3">
                         <span id="tournament-points-${tournament.currentRound}-${player}" style="color: #764ba2; font-weight: bold; min-width: 60px;"></span>
                     </div>
                 `).join('')}
@@ -305,9 +338,10 @@ function updateScore(player, score) {
     currentRound.scores[player] = parseInt(score) || 0;
 }
 
-function updateTieBreaker(player, value) {
+function updateTieBreaker(player, index, value) {
     const currentRound = tournament.rounds[tournament.currentRound];
-    currentRound.tieBreakers[player] = parseInt(value) || 0;
+    currentRound.tieBreakers[player] = normalizeTieBreakers(currentRound.tieBreakers[player]);
+    currentRound.tieBreakers[player][index] = parseInt(value) || 0;
 }
 
 function calculateTablePoints(tableIndex) {
@@ -319,7 +353,7 @@ function calculateTablePoints(tableIndex) {
         currentRound.scores[player] !== undefined
     );
     const allTieBreakers = table.players.every(player => 
-        currentRound.tieBreakers[player] !== undefined
+        Array.isArray(currentRound.tieBreakers[player]) && currentRound.tieBreakers[player].length >= TIE_BREAKER_COUNT
     );
     
     if (!allScores || !allTieBreakers) {
@@ -331,7 +365,10 @@ function calculateTablePoints(tableIndex) {
     const sortedPlayers = [...table.players].sort((a, b) => {
         const scoreDiff = currentRound.scores[b] - currentRound.scores[a];
         if (scoreDiff !== 0) return scoreDiff;
-        const tieDiff = (currentRound.tieBreakers[b] || 0) - (currentRound.tieBreakers[a] || 0);
+        const tieDiff = compareTieBreakers(
+            normalizeTieBreakers(currentRound.tieBreakers[a]),
+            normalizeTieBreakers(currentRound.tieBreakers[b])
+        );
         if (tieDiff !== 0) return tieDiff;
         return a.localeCompare(b);
     });
@@ -395,12 +432,13 @@ function showRoundSummary(roundIndex) {
         name: player,
         gamePoints: round.scores[player] || 0,
         tournamentPoints: round.tournamentPoints[player] || 0,
-        tieBreaker: round.tieBreakers[player] || 0
-    })).sort((a, b) => b.tournamentPoints - a.tournamentPoints || b.gamePoints - a.gamePoints || b.tieBreaker - a.tieBreaker);
+        tieBreakers: normalizeTieBreakers(round.tieBreakers[player]),
+        tieBreakerSum: normalizeTieBreakers(round.tieBreakers[player]).reduce((sum, value) => sum + value, 0)
+    })).sort((a, b) => b.tournamentPoints - a.tournamentPoints || b.gamePoints - a.gamePoints || compareTieBreakers(a.tieBreakers, b.tieBreakers));
     
     const nextRoundNumber = roundIndex + 2;
     const message = `Wyniki rundy ${roundIndex + 1}:\n\n` +
-        players.map((p, i) => `${i + 1}. ${p.name}: ${p.tournamentPoints} pkt turniejowych (${p.gamePoints} pkt z gry, TB ${p.tieBreaker})`).join('\n') +
+        players.map((p, i) => `${i + 1}. ${p.name}: ${p.tournamentPoints} pkt turniejowych (${p.gamePoints} pkt z gry, TB ${p.tieBreakers.join('/')} = ${p.tieBreakerSum})`).join('\n') +
         `\n\nKliknij OK, aby rozpocząć rundę ${nextRoundNumber}.`;
     
     alert(message);
@@ -414,15 +452,20 @@ function calculateFinalResults() {
         tournament.firstPlaces[player] = 0;
         tournament.highestSingleScore[player] = 0;
         tournament.totalTieBreakers[player] = 0;
+        tournament.totalTieBreakersByIndex[player] = Array(TIE_BREAKER_COUNT).fill(0);
 
         tournament.rounds.forEach(round => {
             const gamePoints = round.scores[player] || 0;
             const tournamentPoints = round.tournamentPoints[player] || 0;
-            const tieBreaker = round.tieBreakers[player] || 0;
+            const normalizedTieBreakers = normalizeTieBreakers(round.tieBreakers[player]);
+            const tieBreakerSum = normalizedTieBreakers.reduce((sum, value) => sum + value, 0);
 
             tournament.totalTournamentPoints[player] += tournamentPoints;
             tournament.totalGamePoints[player] += gamePoints;
-            tournament.totalTieBreakers[player] += tieBreaker;
+            tournament.totalTieBreakers[player] += tieBreakerSum;
+            normalizedTieBreakers.forEach((value, index) => {
+                tournament.totalTieBreakersByIndex[player][index] += value;
+            });
 
             if (tournamentPoints === 3) {
                 tournament.firstPlaces[player] += 1;
@@ -447,9 +490,10 @@ function displaySummary() {
             firstPlaces: tournament.firstPlaces[player],
             highestScore: tournament.highestSingleScore[player],
             totalTieBreakers: tournament.totalTieBreakers[player],
+            totalTieBreakersByIndex: tournament.totalTieBreakersByIndex[player],
             roundGamePoints: tournament.rounds.map(round => round.scores[player] || 0),
             roundTournamentPoints: tournament.rounds.map(round => round.tournamentPoints[player] || 0),
-            roundTieBreakers: tournament.rounds.map(round => round.tieBreakers[player] || 0)
+            roundTieBreakers: tournament.rounds.map(round => normalizeTieBreakers(round.tieBreakers[player]).reduce((sum, value) => sum + value, 0))
         }))
         .sort((a, b) => {
             // 1. Punkty turniejowe
@@ -464,7 +508,16 @@ function displaySummary() {
             // 4. Najwyższy pojedynczy wynik
             if (b.highestScore !== a.highestScore)
                 return b.highestScore - a.highestScore;
-            // 5. Suma tie-breakerów
+            // 5. TB1
+            if ((b.totalTieBreakersByIndex?.[0] || 0) !== (a.totalTieBreakersByIndex?.[0] || 0))
+                return (b.totalTieBreakersByIndex?.[0] || 0) - (a.totalTieBreakersByIndex?.[0] || 0);
+            // 6. TB2
+            if ((b.totalTieBreakersByIndex?.[1] || 0) !== (a.totalTieBreakersByIndex?.[1] || 0))
+                return (b.totalTieBreakersByIndex?.[1] || 0) - (a.totalTieBreakersByIndex?.[1] || 0);
+            // 7. TB3
+            if ((b.totalTieBreakersByIndex?.[2] || 0) !== (a.totalTieBreakersByIndex?.[2] || 0))
+                return (b.totalTieBreakersByIndex?.[2] || 0) - (a.totalTieBreakersByIndex?.[2] || 0);
+            // 8. Suma tie-breakerów
             return b.totalTieBreakers - a.totalTieBreakers;
         });
     
@@ -546,9 +599,9 @@ function displaySummary() {
             </ul>
             <p style="margin-top: 15px; font-style: italic; color: #666;">
                 Miejsca przy stole określane są na podstawie punktów zdobytych w grze.
-                W przypadku remisu w punktach przy stole decyduje tie-breaker.
+                W przypadku remisu w punktach przy stole decydują kolejno: TB1, TB2, TB3.
                 W przypadku remisu w klasyfikacji końcowej decydują: liczba zwycięstw, 
-                łączne punkty z gier, najwyższy pojedynczy wynik, suma tie-breakerów.
+                łączne punkty z gier, najwyższy pojedynczy wynik, TB1, TB2, TB3, a na końcu suma TB.
             </p>
         </div>
     `;
@@ -568,7 +621,8 @@ function resetTournament() {
             totalGamePoints: {},
             firstPlaces: {},
             highestSingleScore: {},
-            totalTieBreakers: {}
+            totalTieBreakers: {},
+            totalTieBreakersByIndex: {}
         };
         
         // Ukryj wszystkie sekcje oprócz pierwszej
