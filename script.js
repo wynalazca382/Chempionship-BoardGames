@@ -3,15 +3,35 @@ let tournament = {
     gameName: '',
     players: [],
     currentRound: 0,
-    rounds: [
-        { tables: [], scores: {}, tournamentPoints: {} },
-        { tables: [], scores: {}, tournamentPoints: {} }
-    ],
+    totalRounds: 2,
+    preferredTableSize: 4,
+    rounds: [],
     totalTournamentPoints: {},
     totalGamePoints: {},
     firstPlaces: {},
-    highestSingleScore: {}
+    highestSingleScore: {},
+    totalTieBreakers: {}
 };
+
+function createRounds(totalRounds) {
+    return Array.from({ length: totalRounds }, () => ({
+        tables: [],
+        scores: {},
+        tieBreakers: {},
+        tournamentPoints: {}
+    }));
+}
+
+function readTournamentConfig() {
+    const roundInput = document.getElementById('round-count');
+    const tableSizeInput = document.getElementById('preferred-table-size');
+
+    const rounds = Math.max(1, Math.min(10, parseInt(roundInput?.value, 10) || 2));
+    const preferredSize = Math.max(3, Math.min(8, parseInt(tableSizeInput?.value, 10) || 4));
+
+    tournament.totalRounds = rounds;
+    tournament.preferredTableSize = preferredSize;
+}
 
 // Wybór gry
 function selectGame() {
@@ -24,9 +44,17 @@ function selectGame() {
     }
     
     tournament.gameName = gameName;
+    readTournamentConfig();
+    if (tournament.gameName) {
+        document.getElementById('selected-game').innerHTML = `
+            <strong>Wybrana gra:</strong> ${tournament.gameName}<br>
+            <span style="color:#667eea; font-weight: 500;">Rundy: ${tournament.totalRounds} · Preferowany stół: ${tournament.preferredTableSize} osoby</span>
+        `;
+    }
     
     document.getElementById('selected-game').innerHTML = `
-        <strong>Wybrana gra:</strong> ${gameName}
+        <strong>Wybrana gra:</strong> ${gameName}<br>
+        <span style="color:#667eea; font-weight: 500;">Rundy: ${tournament.totalRounds} · Preferowany stół: ${tournament.preferredTableSize} osoby</span>
     `;
     
     // Pokaż sekcję graczy
@@ -82,10 +110,18 @@ function removePlayer(index) {
 
 // Generowanie stołów
 function generateTables() {
-    if (tournament.players.length < 2) {
-        alert('Potrzebujesz co najmniej 2 graczy!');
+    if (tournament.players.length < 3) {
+        alert('Potrzebujesz co najmniej 3 graczy!');
         return;
     }
+
+    readTournamentConfig();
+    tournament.rounds = createRounds(tournament.totalRounds);
+    tournament.totalTournamentPoints = {};
+    tournament.totalGamePoints = {};
+    tournament.firstPlaces = {};
+    tournament.highestSingleScore = {};
+    tournament.totalTieBreakers = {};
     
     tournament.currentRound = 0;
     generateRoundTables(0);
@@ -106,81 +142,55 @@ function generateRoundTables(roundIndex) {
         shuffledPlayers = generateNonRepeatingTables();
     }
     
-    // Podział na stoły (preferowane 4-osobowe, dopuszczalne 3-osobowe)
     tournament.rounds[roundIndex].tables = [];
     const totalPlayers = shuffledPlayers.length;
+    const tableSizes = calculateTableStructure(totalPlayers, tournament.preferredTableSize);
     let tableNumber = 1;
     let currentIndex = 0;
-    
-    // Oblicz optymalny podział
-    const remainder = totalPlayers % 4;
-    let fourPlayerTables;
-    let threePlayerTables = 0;
-    
-    if (remainder === 0) {
-        // Wszystkie stoły 4-osobowe
-        fourPlayerTables = totalPlayers / 4;
-    } else if (remainder === 1) {
-        // Zostaje 1 gracz - robimy dwa stoły 3-osobowe zamiast jednego 4-osobowego i jednego 1-osobowego
-        fourPlayerTables = Math.floor(totalPlayers / 4) - 1;
-        threePlayerTables = 2;
-    } else if (remainder === 2) {
-        // Zostają 2 graczy - robimy dwa stoły 3-osobowe zamiast jednego 4-osobowego i jednego 2-osobowego
-        fourPlayerTables = Math.floor(totalPlayers / 4) - 1;
-        threePlayerTables = 2;
-    } else if (remainder === 3) {
-        // Zostają 3 graczy - jeden stół 3-osobowy
-        fourPlayerTables = Math.floor(totalPlayers / 4);
-        threePlayerTables = 1;
-    }
-    
-    // Twórz stoły 4-osobowe
-    for (let i = 0; i < fourPlayerTables; i++) {
-        const tablePlayers = shuffledPlayers.slice(currentIndex, currentIndex + 4);
+
+    tableSizes.forEach(size => {
+        const tablePlayers = shuffledPlayers.slice(currentIndex, currentIndex + size);
         tournament.rounds[roundIndex].tables.push({
             tableNumber: tableNumber++,
             players: tablePlayers
         });
-        currentIndex += 4;
+        currentIndex += size;
+    });
+}
+
+function calculateTableStructure(totalPlayers, preferredSize) {
+    const minTableSize = 3;
+    const safePreferred = Math.max(minTableSize, preferredSize);
+    let tableCount = Math.ceil(totalPlayers / safePreferred);
+    let baseSize = Math.floor(totalPlayers / tableCount);
+
+    while (baseSize < minTableSize && tableCount > 1) {
+        tableCount -= 1;
+        baseSize = Math.floor(totalPlayers / tableCount);
     }
-    
-    // Twórz stoły 3-osobowe
-    for (let i = 0; i < threePlayerTables; i++) {
-        const tablePlayers = shuffledPlayers.slice(currentIndex, currentIndex + 3);
-        tournament.rounds[roundIndex].tables.push({
-            tableNumber: tableNumber++,
-            players: tablePlayers
-        });
-        currentIndex += 3;
-    }
+
+    const remainder = totalPlayers % tableCount;
+    const sizes = Array.from({ length: tableCount }, (_, index) => baseSize + (index < remainder ? 1 : 0));
+
+    return sizes;
 }
 
 function generateNonRepeatingTables() {
-    // Pobierz pary z pierwszej rundy
-    const firstRoundPairs = new Set();
-    tournament.rounds[0].tables.forEach(table => {
-        for (let i = 0; i < table.players.length; i++) {
-            for (let j = i + 1; j < table.players.length; j++) {
-                const pair = [table.players[i], table.players[j]].sort().join('|');
-                firstRoundPairs.add(pair);
+    // Pobierz pary ze wszystkich poprzednich rund
+    const previousRoundPairs = new Set();
+    tournament.rounds.slice(0, tournament.currentRound).forEach(round => {
+        round.tables.forEach(table => {
+            for (let i = 0; i < table.players.length; i++) {
+                for (let j = i + 1; j < table.players.length; j++) {
+                    const pair = [table.players[i], table.players[j]].sort().join('|');
+                    previousRoundPairs.add(pair);
+                }
             }
-        }
+        });
     });
     
-    // Oblicz struktur stołów (która będzie taka sama jak w rundzie 1)
     const totalPlayers = tournament.players.length;
-    const remainder = totalPlayers % 4;
-    let tableStructure = [];
-    
-    if (remainder === 0) {
-        for (let i = 0; i < totalPlayers / 4; i++) tableStructure.push(4);
-    } else if (remainder === 1 || remainder === 2) {
-        for (let i = 0; i < Math.floor(totalPlayers / 4) - 1; i++) tableStructure.push(4);
-        tableStructure.push(3, 3);
-    } else if (remainder === 3) {
-        for (let i = 0; i < Math.floor(totalPlayers / 4); i++) tableStructure.push(4);
-        tableStructure.push(3);
-    }
+    const tableStructure = calculateTableStructure(totalPlayers, tournament.preferredTableSize);
     
     // Próbuj losować stoły minimalizując powtórzenia
     let bestArrangement = null;
@@ -197,7 +207,7 @@ function generateNonRepeatingTables() {
             for (let j = 0; j < tablePlayers.length; j++) {
                 for (let k = j + 1; k < tablePlayers.length; k++) {
                     const pair = [tablePlayers[j], tablePlayers[k]].sort().join('|');
-                    if (firstRoundPairs.has(pair)) repeats++;
+                    if (previousRoundPairs.has(pair)) repeats++;
                 }
             }
             currentIndex += tableSize;
@@ -224,7 +234,7 @@ function displayTables() {
     const currentRoundTables = tournament.rounds[tournament.currentRound].tables;
     
     tablesDisplay.innerHTML = `
-        <h3 style="color: #764ba2; margin-bottom: 15px;">Runda ${tournament.currentRound + 1}/2</h3>
+        <h3 style="color: #764ba2; margin-bottom: 15px;">Runda ${tournament.currentRound + 1}/${tournament.totalRounds}</h3>
         ${currentRoundTables.map(table => `
             <div class="table">
                 <h3>Stół ${table.tableNumber}</h3>
@@ -245,15 +255,22 @@ function startScoring() {
     const finishBtn = document.getElementById('finish-btn');
     finishBtn.style.display = 'block';
     // Zmień tekst przycisku w zależności od rundy
-    finishBtn.textContent = tournament.currentRound === 0 ? 'Następna Runda' : 'Zakończ Turniej';
+    finishBtn.textContent = tournament.currentRound < tournament.totalRounds - 1 ? 'Następna Runda' : 'Zakończ Turniej';
 }
 
 function displayScoringSection() {
     const scoringDisplay = document.getElementById('scoring-display');
     const currentRound = tournament.rounds[tournament.currentRound];
+
+    currentRound.tables.forEach(table => {
+        table.players.forEach(player => {
+            if (currentRound.scores[player] === undefined) currentRound.scores[player] = 0;
+            if (currentRound.tieBreakers[player] === undefined) currentRound.tieBreakers[player] = 0;
+        });
+    });
     
     scoringDisplay.innerHTML = `
-        <h3 style="color: #764ba2; margin-bottom: 20px;">Runda ${tournament.currentRound + 1}/2 - Wprowadź punkty z gier</h3>
+        <h3 style="color: #764ba2; margin-bottom: 20px;">Runda ${tournament.currentRound + 1}/${tournament.totalRounds} - Wprowadź punkty z gier</h3>
         ${currentRound.tables.map(table => `
             <div class="scoring-table">
                 <h3>Stół ${table.tableNumber}</h3>
@@ -266,6 +283,12 @@ function displayScoringSection() {
                                min="0"
                                onchange="updateScore('${player}', this.value)"
                                placeholder="Punkty z gry">
+                        <input type="number"
+                               id="tiebreaker-${tournament.currentRound}-${player}"
+                               value="${currentRound.tieBreakers[player] || 0}"
+                               min="0"
+                               onchange="updateTieBreaker('${player}', this.value)"
+                               placeholder="Tie-breaker">
                         <span id="tournament-points-${tournament.currentRound}-${player}" style="color: #764ba2; font-weight: bold; min-width: 60px;"></span>
                     </div>
                 `).join('')}
@@ -282,24 +305,36 @@ function updateScore(player, score) {
     currentRound.scores[player] = parseInt(score) || 0;
 }
 
+function updateTieBreaker(player, value) {
+    const currentRound = tournament.rounds[tournament.currentRound];
+    currentRound.tieBreakers[player] = parseInt(value) || 0;
+}
+
 function calculateTablePoints(tableIndex) {
     const currentRound = tournament.rounds[tournament.currentRound];
     const table = currentRound.tables[tableIndex];
     
     // Sprawdź czy wszystkie wyniki są wprowadzone
     const allScores = table.players.every(player => 
-        currentRound.scores[player] !== undefined && currentRound.scores[player] > 0
+        currentRound.scores[player] !== undefined
+    );
+    const allTieBreakers = table.players.every(player => 
+        currentRound.tieBreakers[player] !== undefined
     );
     
-    if (!allScores) {
-        alert('Wprowadź punkty dla wszystkich graczy przy tym stole!');
+    if (!allScores || !allTieBreakers) {
+        alert('Wprowadź punkty i tie-breakery dla wszystkich graczy przy tym stole!');
         return;
     }
     
-    // Posortuj graczy według punktów (malejąco)
-    const sortedPlayers = [...table.players].sort((a, b) => 
-        currentRound.scores[b] - currentRound.scores[a]
-    );
+    // Posortuj graczy według punktów (malejąco), a przy remisie po tie-breakerach
+    const sortedPlayers = [...table.players].sort((a, b) => {
+        const scoreDiff = currentRound.scores[b] - currentRound.scores[a];
+        if (scoreDiff !== 0) return scoreDiff;
+        const tieDiff = (currentRound.tieBreakers[b] || 0) - (currentRound.tieBreakers[a] || 0);
+        if (tieDiff !== 0) return tieDiff;
+        return a.localeCompare(b);
+    });
     
     // Przyznaj punkty turniejowe: 3, 2, 1, 0
     const tournamentPointsMap = [3, 2, 1, 0];
@@ -332,15 +367,16 @@ function finishTournament() {
         return;
     }
     
-    if (tournament.currentRound === 0) {
-        // Przejdź do drugiej rundy
-        tournament.currentRound = 1;
-        generateRoundTables(1);
+    if (tournament.currentRound < tournament.totalRounds - 1) {
+        // Przejdź do kolejnej rundy
+        const finishedRound = tournament.currentRound;
+        tournament.currentRound += 1;
+        generateRoundTables(tournament.currentRound);
         displayTables();
-        
-        // Wyświetl wyniki pierwszej rundy
-        showRoundSummary(0);
-        
+
+        // Wyświetl wyniki zakończonej rundy
+        showRoundSummary(finishedRound);
+
         // Wróć do sekcji stołów
         document.getElementById('scoring-section').classList.remove('active');
         document.getElementById('finish-btn').style.display = 'none';
@@ -358,37 +394,44 @@ function showRoundSummary(roundIndex) {
     const players = tournament.players.map(player => ({
         name: player,
         gamePoints: round.scores[player] || 0,
-        tournamentPoints: round.tournamentPoints[player] || 0
-    })).sort((a, b) => b.tournamentPoints - a.tournamentPoints || b.gamePoints - a.gamePoints);
+        tournamentPoints: round.tournamentPoints[player] || 0,
+        tieBreaker: round.tieBreakers[player] || 0
+    })).sort((a, b) => b.tournamentPoints - a.tournamentPoints || b.gamePoints - a.gamePoints || b.tieBreaker - a.tieBreaker);
     
+    const nextRoundNumber = roundIndex + 2;
     const message = `Wyniki rundy ${roundIndex + 1}:\n\n` +
-        players.map((p, i) => `${i + 1}. ${p.name}: ${p.tournamentPoints} pkt turniejowych (${p.gamePoints} pkt z gry)`).join('\n') +
-        '\n\nKliknij OK, aby rozpocząć rundę 2.';
+        players.map((p, i) => `${i + 1}. ${p.name}: ${p.tournamentPoints} pkt turniejowych (${p.gamePoints} pkt z gry, TB ${p.tieBreaker})`).join('\n') +
+        `\n\nKliknij OK, aby rozpocząć rundę ${nextRoundNumber}.`;
     
     alert(message);
 }
 
 function calculateFinalResults() {
-    // Sumuj punkty turniejowe i punkty z gier
+    // Sumuj punkty turniejowe, punkty z gier i tie-breakery
     tournament.players.forEach(player => {
-        tournament.totalTournamentPoints[player] = 
-            (tournament.rounds[0].tournamentPoints[player] || 0) +
-            (tournament.rounds[1].tournamentPoints[player] || 0);
-        
-        tournament.totalGamePoints[player] = 
-            (tournament.rounds[0].scores[player] || 0) +
-            (tournament.rounds[1].scores[player] || 0);
-        
-        // Policz zwycięstwa (ile razy zajął 1. miejsce przy stole)
-        tournament.firstPlaces[player] = 
-            (tournament.rounds[0].tournamentPoints[player] === 3 ? 1 : 0) +
-            (tournament.rounds[1].tournamentPoints[player] === 3 ? 1 : 0);
-        
-        // Najwyższy pojedynczy wynik
-        tournament.highestSingleScore[player] = Math.max(
-            tournament.rounds[0].scores[player] || 0,
-            tournament.rounds[1].scores[player] || 0
-        );
+        tournament.totalTournamentPoints[player] = 0;
+        tournament.totalGamePoints[player] = 0;
+        tournament.firstPlaces[player] = 0;
+        tournament.highestSingleScore[player] = 0;
+        tournament.totalTieBreakers[player] = 0;
+
+        tournament.rounds.forEach(round => {
+            const gamePoints = round.scores[player] || 0;
+            const tournamentPoints = round.tournamentPoints[player] || 0;
+            const tieBreaker = round.tieBreakers[player] || 0;
+
+            tournament.totalTournamentPoints[player] += tournamentPoints;
+            tournament.totalGamePoints[player] += gamePoints;
+            tournament.totalTieBreakers[player] += tieBreaker;
+
+            if (tournamentPoints === 3) {
+                tournament.firstPlaces[player] += 1;
+            }
+
+            if (gamePoints > tournament.highestSingleScore[player]) {
+                tournament.highestSingleScore[player] = gamePoints;
+            }
+        });
     });
 }
 
@@ -403,10 +446,10 @@ function displaySummary() {
             gamePoints: tournament.totalGamePoints[player],
             firstPlaces: tournament.firstPlaces[player],
             highestScore: tournament.highestSingleScore[player],
-            round1GamePoints: tournament.rounds[0].scores[player] || 0,
-            round1TournamentPoints: tournament.rounds[0].tournamentPoints[player] || 0,
-            round2GamePoints: tournament.rounds[1].scores[player] || 0,
-            round2TournamentPoints: tournament.rounds[1].tournamentPoints[player] || 0
+            totalTieBreakers: tournament.totalTieBreakers[player],
+            roundGamePoints: tournament.rounds.map(round => round.scores[player] || 0),
+            roundTournamentPoints: tournament.rounds.map(round => round.tournamentPoints[player] || 0),
+            roundTieBreakers: tournament.rounds.map(round => round.tieBreakers[player] || 0)
         }))
         .sort((a, b) => {
             // 1. Punkty turniejowe
@@ -419,12 +462,15 @@ function displaySummary() {
             if (b.gamePoints !== a.gamePoints) 
                 return b.gamePoints - a.gamePoints;
             // 4. Najwyższy pojedynczy wynik
-            return b.highestScore - a.highestScore;
+            if (b.highestScore !== a.highestScore)
+                return b.highestScore - a.highestScore;
+            // 5. Suma tie-breakerów
+            return b.totalTieBreakers - a.totalTieBreakers;
         });
     
     // Statystyki
     const totalPlayers = tournament.players.length;
-    const totalRounds = 2;
+    const totalRounds = tournament.totalRounds;
     const avgTournamentPoints = sortedPlayers.reduce((sum, p) => sum + p.tournamentPoints, 0) / totalPlayers;
     
     summaryDisplay.innerHTML = `
@@ -456,6 +502,7 @@ function displaySummary() {
                     <th>Zwycięstwa</th>
                     <th>Pkt z gier</th>
                     <th>Najwyższy wynik</th>
+                    <th>Suma TB</th>
                 </tr>
             </thead>
             <tbody>
@@ -478,10 +525,11 @@ function displaySummary() {
                         <tr class="${rankClass}">
                             <td>${medal}${index + 1}</td>
                             <td>${player.name}</td>
-                            <td><strong>${player.tournamentPoints}</strong> (${player.round1TournamentPoints} + ${player.round2TournamentPoints})</td>
+                            <td><strong>${player.tournamentPoints}</strong> (${player.roundTournamentPoints.join(' + ')})</td>
                             <td>${player.firstPlaces}</td>
-                            <td>${player.gamePoints} (${player.round1GamePoints} + ${player.round2GamePoints})</td>
+                            <td>${player.gamePoints} (${player.roundGamePoints.join(' + ')})</td>
                             <td>${player.highestScore}</td>
+                            <td>${player.totalTieBreakers} (${player.roundTieBreakers.join(' + ')})</td>
                         </tr>
                     `;
                 }).join('')}
@@ -498,8 +546,9 @@ function displaySummary() {
             </ul>
             <p style="margin-top: 15px; font-style: italic; color: #666;">
                 Miejsca przy stole określane są na podstawie punktów zdobytych w grze.
+                W przypadku remisu w punktach przy stole decyduje tie-breaker.
                 W przypadku remisu w klasyfikacji końcowej decydują: liczba zwycięstw, 
-                łączne punkty z gier, najwyższy pojedynczy wynik.
+                łączne punkty z gier, najwyższy pojedynczy wynik, suma tie-breakerów.
             </p>
         </div>
     `;
@@ -512,14 +561,14 @@ function resetTournament() {
             gameName: '',
             players: [],
             currentRound: 0,
-            rounds: [
-                { tables: [], scores: {}, tournamentPoints: {} },
-                { tables: [], scores: {}, tournamentPoints: {} }
-            ],
+            totalRounds: 2,
+            preferredTableSize: 4,
+            rounds: [],
             totalTournamentPoints: {},
             totalGamePoints: {},
             firstPlaces: {},
-            highestSingleScore: {}
+            highestSingleScore: {},
+            totalTieBreakers: {}
         };
         
         // Ukryj wszystkie sekcje oprócz pierwszej
@@ -532,6 +581,8 @@ function resetTournament() {
         document.getElementById('game-name').value = '';
         document.getElementById('player-name').value = '';
         document.getElementById('selected-game').innerHTML = '';
+        document.getElementById('round-count').value = '2';
+        document.getElementById('preferred-table-size').value = '4';
         
         // Wyczyść wyświetlane dane
         updatePlayerList();
@@ -539,4 +590,6 @@ function resetTournament() {
 }
 
 // Inicjalizacja
+readTournamentConfig();
+tournament.rounds = createRounds(tournament.totalRounds);
 updatePlayerList();
