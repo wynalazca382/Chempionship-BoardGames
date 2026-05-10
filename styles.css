@@ -32,6 +32,15 @@ header h1 {
     margin: 0;
 }
 
+.import-export-bar {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+    padding: 16px 30px 0;
+    background: white;
+}
+
 .section {
     padding: 30px;
     display: none;
@@ -74,6 +83,13 @@ h2 {
     color: #667eea;
     font-weight: 600;
     font-size: 14px;
+}
+
+.config-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    flex: 0 0 auto;
 }
 
 input[type="text"], input[type="number"] {
@@ -136,6 +152,15 @@ button:active {
     background: #38a169;
 }
 
+.btn-tertiary {
+    background: #1f2937;
+    width: auto;
+}
+
+.btn-tertiary:hover {
+    background: #111827;
+}
+
 #selected-game {
     margin-top: 20px;
     padding: 15px;
@@ -152,6 +177,33 @@ button:active {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 10px;
     margin-top: 20px;
+}
+
+.attendance-list {
+    margin-top: 20px;
+}
+
+.attendance-list-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+}
+
+.attendance-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #f7fafc;
+    padding: 12px;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+    cursor: pointer;
+}
+
+.attendance-item input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
 }
 
 .player-item {
@@ -250,6 +302,70 @@ button:active {
     background: #f7fafc;
 }
 
+.summary-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+}
+
+.summary-actions button {
+    flex: 1;
+}
+
+.league-summary-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+    gap: 20px;
+    align-items: start;
+}
+
+.league-summary-main,
+.league-balance-panel {
+    min-width: 0;
+}
+
+.league-balance-panel {
+    background: #fdfcff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 18px;
+    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.08);
+}
+
+.league-balance-table {
+    margin-top: 0;
+}
+
+.league-history {
+    margin-top: 20px;
+    padding: 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fafafa;
+}
+
+.league-history h4 {
+    color: #667eea;
+    margin-bottom: 12px;
+}
+
+.league-history-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.league-history-card {
+    background: white;
+    border-radius: 10px;
+    padding: 12px;
+    border-left: 4px solid #667eea;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
 .rank-1 {
     background: #ffd700 !important;
     font-weight: bold;
@@ -263,6 +379,12 @@ button:active {
 .rank-3 {
     background: #cd7f32 !important;
     font-weight: bold;
+}
+
+@media (max-width: 900px) {
+    .league-summary-layout {
+        grid-template-columns: 1fr;
+    }
 }
 
 .medal {

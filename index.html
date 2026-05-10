@@ -11,6 +11,11 @@
         <header>
             <h1>🎲 Turniej Planszówkowy</h1>
         </header>
+        <div class="import-export-bar">
+            <button onclick="downloadTournamentExport()" class="btn-tertiary">Eksportuj turniej</button>
+            <button onclick="triggerTournamentImport()" class="btn-tertiary">Importuj turniej</button>
+            <input type="file" id="tournament-import" accept="application/json" onchange="handleTournamentImport(event)" hidden>
+        </div>
 
         <!-- Sekcja 1: Wybór gry -->
         <section id="game-selection" class="section active">
@@ -28,6 +33,13 @@
                     <label for="preferred-table-size">Preferowana liczba uczestników przy stole</label>
                     <input type="number" id="preferred-table-size" min="3" max="8" value="4">
                 </div>
+                <div class="config-item">
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="league-mode">
+                        Tryb ligi
+                    </label>
+                    <input type="number" id="league-weeks" min="2" max="52" value="4" placeholder="Liczba tygodni">
+                </div>
             </div>
             <div id="selected-game"></div>
         </section>
@@ -40,6 +52,7 @@
                 <button onclick="addPlayer()">Dodaj Gracza</button>
             </div>
             <div id="player-list"></div>
+            <div id="attendance-list" class="attendance-list"></div>
             <button onclick="generateTables()" class="btn-primary" id="generate-tables-btn" style="display: none;">
                 Losuj Stoły
             </button>
@@ -70,7 +83,7 @@
         <section id="summary-section" class="section">
             <h2>🏆 Podsumowanie Turnieju</h2>
             <div id="summary-display"></div>
-            <button onclick="resetTournament()" class="btn-secondary">Nowy Turniej</button>
+            <div id="summary-actions" class="summary-actions"></div>
         </section>
     </div>
 
