@@ -106,6 +106,22 @@ input[type="text"]:focus, input[type="number"]:focus {
     border-color: #667eea;
 }
 
+select {
+    flex: 1;
+    padding: 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: border-color 0.3s;
+    background: white;
+    cursor: pointer;
+}
+
+select:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
 button {
     padding: 12px 24px;
     background: #667eea;
@@ -159,6 +175,14 @@ button:active {
 
 .btn-tertiary:hover {
     background: #111827;
+}
+
+.btn-tertiary-danger {
+    background: #dc2626 !important;
+}
+
+.btn-tertiary-danger:hover {
+    background: #b91c1c !important;
 }
 
 #selected-game {
@@ -224,6 +248,18 @@ button:active {
 
 .player-item button:hover {
     background: #dc2626;
+}
+
+.btn-remove-player {
+    padding: 4px 8px !important;
+    background: #ef4444 !important;
+    font-size: 14px !important;
+    min-width: auto !important;
+    width: auto !important;
+}
+
+.btn-remove-player:hover {
+    background: #dc2626 !important;
 }
 
 .table {

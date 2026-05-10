@@ -4,8 +4,16 @@ let tournament = {
     players: [],
     currentRound: 0,
     totalRounds: 2,
+    minTableSize: 3,
+    maxTableSize: 6,
     preferredTableSize: 4,
     activeSection: 'game-selection',
+    scoringMode: 'game',
+    customScoringByPlace: { 1: 3, 2: 1, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0 },
+    tieBreakersConfig: {
+        count: 3,
+        method: 'priority'
+    },
     league: {
         enabled: false,
         totalWeeks: 1,
@@ -25,6 +33,108 @@ let tournament = {
 
 const TIE_BREAKER_COUNT = 3;
 const TOURNAMENT_STORAGE_KEY = 'chempionship-boardgames-tournament';
+const PLAYER_HISTORY_KEY = 'chempionship-player-history';
+
+// Szablony turniejów
+const TOURNAMENT_TEMPLATES = {
+    quick: {
+        name: 'Quick (3 rundy)',
+        totalRounds: 3,
+        minTableSize: 2,
+        maxTableSize: 5,
+        preferredTableSize: 3,
+        tieBreakersConfig: { count: 2, method: 'priority' }
+    },
+    standard: {
+        name: 'Standard (4 rundy)',
+        totalRounds: 4,
+        minTableSize: 3,
+        maxTableSize: 6,
+        preferredTableSize: 4,
+        tieBreakersConfig: { count: 3, method: 'priority' }
+    },
+    extended: {
+        name: 'Extended (5 rund)',
+        totalRounds: 5,
+        minTableSize: 3,
+        maxTableSize: 6,
+        preferredTableSize: 4,
+        tieBreakersConfig: { count: 3, method: 'sum' }
+    }
+};
+
+let playerHistory = {};
+
+function loadPlayerHistory() {
+    try {
+        const stored = localStorage.getItem(PLAYER_HISTORY_KEY);
+        playerHistory = stored ? JSON.parse(stored) : {};
+    } catch (e) {
+        playerHistory = {};
+    }
+}
+
+function savePlayerHistory() {
+    try {
+        localStorage.setItem(PLAYER_HISTORY_KEY, JSON.stringify(playerHistory));
+    } catch (e) {
+        console.error('Nie można zapisać historii graczy', e);
+    }
+}
+
+function getPlayerStats(playerName) {
+    if (!playerHistory[playerName]) {
+        playerHistory[playerName] = { games: 0, totalPoints: 0, firstPlaces: 0, tournamentIds: [] };
+    }
+    const stats = playerHistory[playerName];
+    return {
+        games: stats.games || 0,
+        totalPoints: stats.totalPoints || 0,
+        firstPlaces: stats.firstPlaces || 0,
+        avgPoints: stats.games ? (stats.totalPoints / stats.games).toFixed(1) : 0,
+        winRate: stats.games ? ((stats.firstPlaces / stats.games) * 100).toFixed(1) : 0
+    };
+}
+
+function updatePlayerHistory() {
+    if (!tournament.players || tournament.players.length === 0) return;
+    
+    const tourneyId = `${tournament.gameName}-${Date.now()}`;
+    
+    tournament.players.forEach(player => {
+        if (!playerHistory[player]) {
+            playerHistory[player] = { games: 0, totalPoints: 0, firstPlaces: 0, tournamentIds: [] };
+        }
+        
+        const stats = playerHistory[player];
+        stats.games++;
+        stats.totalPoints += (tournament.totalTournamentPoints[player] || 0);
+        if (tournament.firstPlaces[player]) stats.firstPlaces++;
+        if (!stats.tournamentIds) stats.tournamentIds = [];
+        stats.tournamentIds.push(tourneyId);
+    });
+    
+    savePlayerHistory();
+}
+
+function applyTournamentTemplate(templateKey) {
+    const template = TOURNAMENT_TEMPLATES[templateKey];
+    if (!template) return;
+    
+    const roundInput = document.getElementById('round-count');
+    const minInput = document.getElementById('min-table-size');
+    const maxInput = document.getElementById('max-table-size');
+    const prefInput = document.getElementById('preferred-table-size');
+    const tbCountInput = document.getElementById('tb-count');
+    const tbMethodInput = document.getElementById('tb-method');
+    
+    if (roundInput) roundInput.value = template.totalRounds;
+    if (minInput) minInput.value = template.minTableSize;
+    if (maxInput) maxInput.value = template.maxTableSize;
+    if (prefInput) prefInput.value = template.preferredTableSize;
+    if (tbCountInput) tbCountInput.value = template.tieBreakersConfig.count;
+    if (tbMethodInput) tbMethodInput.value = template.tieBreakersConfig.method;
+}
 
 function createLeagueState() {
     return {
@@ -77,9 +187,12 @@ function renderSelectedGameSummary() {
         ? `<br><span style="color:#1f2937; font-weight: 500;">Liga: ${tournament.league.totalWeeks} tygodni · Aktualny tydzień: ${tournament.league.currentWeek + 1}/${tournament.league.totalWeeks} · Obecni: ${presentCount}/${totalPlayers}</span>`
         : '';
 
+    const methodLabels = { priority: 'Priorytet', sum: 'Suma', average: 'Średnia', max: 'Maksimum' };
+    const methodDisplay = methodLabels[tournament.tieBreakersConfig?.method] || 'Priorytet';
+    
     return `
         <strong>Wybrana gra:</strong> ${tournament.gameName}<br>
-        <span style="color:#667eea; font-weight: 500;">Rundy: ${tournament.totalRounds} · Preferowany stół: ${tournament.preferredTableSize} osoby</span>${leagueLine}
+        <span style="color:#667eea; font-weight: 500;">Rundy: ${tournament.totalRounds} · Stół: min ${tournament.minTableSize}, max ${tournament.maxTableSize}, preferowana ${tournament.preferredTableSize} · TB: ${tournament.tieBreakersConfig?.count || 3} (${methodDisplay})</span>${leagueLine}
     `;
 }
 
@@ -391,6 +504,11 @@ function normalizeTournamentData(data) {
     imported.league.weekSummaries = Array.isArray(imported.league.weekSummaries) ? imported.league.weekSummaries : [];
     imported.league.weekAttendanceByWeek = imported.league.weekAttendanceByWeek && typeof imported.league.weekAttendanceByWeek === 'object' ? imported.league.weekAttendanceByWeek : {};
     imported.league.phase = typeof imported.league.phase === 'string' ? imported.league.phase : (imported.league.enabled ? 'running' : 'inactive');
+    imported.tieBreakersConfig = imported.tieBreakersConfig && typeof imported.tieBreakersConfig === 'object' ? imported.tieBreakersConfig : { count: 3, method: 'priority' };
+    imported.tieBreakersConfig.count = Math.max(1, Math.min(5, parseInt(imported.tieBreakersConfig.count, 10) || 3));
+    imported.tieBreakersConfig.method = ['priority', 'sum', 'average', 'max'].includes(imported.tieBreakersConfig.method) ? imported.tieBreakersConfig.method : 'priority';
+    imported.scoringMode = ['game', 'custom'].includes(imported.scoringMode) ? imported.scoringMode : 'game';
+    imported.customScoringByPlace = imported.customScoringByPlace && typeof imported.customScoringByPlace === 'object' ? imported.customScoringByPlace : { 1: 3, 2: 1, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0 };
 
     return imported;
 }
@@ -400,9 +518,23 @@ function restoreTournamentFromData(data) {
 
     document.getElementById('game-name').value = tournament.gameName;
     document.getElementById('round-count').value = tournament.totalRounds;
-    document.getElementById('preferred-table-size').value = tournament.preferredTableSize;
-    const leagueModeInput = document.getElementById('league-mode');
+    const minTableSizeInput = document.getElementById('min-table-size');
+    const maxTableSizeInput = document.getElementById('max-table-size');
+    const preferredTableSizeInput = document.getElementById('preferred-table-size');
+    const tbCountInput = document.getElementById('tb-count');
+    const tbMethodInput = document.getElementById('tb-method');
+    if (minTableSizeInput) minTableSizeInput.value = tournament.minTableSize;
+    if (maxTableSizeInput) maxTableSizeInput.value = tournament.maxTableSize;
+    if (preferredTableSizeInput) preferredTableSizeInput.value = tournament.preferredTableSize;
+    if (tbCountInput) tbCountInput.value = tournament.tieBreakersConfig?.count || 3;
+    if (tbMethodInput) tbMethodInput.value = tournament.tieBreakersConfig?.method || 'priority';
+    const scoreRadio = document.getElementById('scoring-game');
+    if (scoreRadio) scoreRadio.checked = tournament.scoringMode === 'game';
+    const customRadio = document.getElementById('scoring-custom');
+    if (customRadio) customRadio.checked = tournament.scoringMode === 'custom';
+    updateScoringMode();
     const leagueWeeksInput = document.getElementById('league-weeks');
+    const leagueModeInput = document.getElementById('league-mode');
     if (leagueModeInput) leagueModeInput.checked = Boolean(tournament.league.enabled);
     if (leagueWeeksInput) leagueWeeksInput.value = tournament.league.totalWeeks;
 
@@ -466,32 +598,106 @@ function createRounds(totalRounds) {
 }
 
 function normalizeTieBreakers(tieBreakers) {
+    const count = tournament.tieBreakersConfig?.count || TIE_BREAKER_COUNT;
     const normalized = Array.isArray(tieBreakers) ? [...tieBreakers] : [];
-    while (normalized.length < TIE_BREAKER_COUNT) normalized.push(0);
-    return normalized.slice(0, TIE_BREAKER_COUNT);
+    while (normalized.length < count) normalized.push(0);
+    return normalized.slice(0, count);
 }
 
 function compareTieBreakers(a, b) {
-    for (let i = 0; i < TIE_BREAKER_COUNT; i++) {
-        const diff = (b[i] || 0) - (a[i] || 0);
-        if (diff !== 0) return diff;
+    const method = tournament.tieBreakersConfig?.method || 'priority';
+    const count = tournament.tieBreakersConfig?.count || TIE_BREAKER_COUNT;
+    const normalizedA = normalizeTieBreakers(a);
+    const normalizedB = normalizeTieBreakers(b);
+    
+    if (method === 'priority') {
+        for (let i = 0; i < count; i++) {
+            const diff = (normalizedB[i] || 0) - (normalizedA[i] || 0);
+            if (diff !== 0) return diff;
+        }
+        return 0;
+    } else if (method === 'sum') {
+        const sumA = normalizedA.reduce((s, v) => s + (v || 0), 0);
+        const sumB = normalizedB.reduce((s, v) => s + (v || 0), 0);
+        return sumB - sumA;
+    } else if (method === 'average') {
+        const sumA = normalizedA.reduce((s, v) => s + (v || 0), 0);
+        const sumB = normalizedB.reduce((s, v) => s + (v || 0), 0);
+        return (sumB / count) - (sumA / count);
+    } else if (method === 'max') {
+        const maxA = Math.max(...normalizedA, 0);
+        const maxB = Math.max(...normalizedB, 0);
+        return maxB - maxA;
     }
     return 0;
 }
 
 function readTournamentConfig() {
     const roundInput = document.getElementById('round-count');
-    const tableSizeInput = document.getElementById('preferred-table-size');
+    const minTableSizeInput = document.getElementById('min-table-size');
+    const maxTableSizeInput = document.getElementById('max-table-size');
+    const preferredTableSizeInput = document.getElementById('preferred-table-size');
+    const tbCountInput = document.getElementById('tb-count');
+    const tbMethodInput = document.getElementById('tb-method');
+    const scoringModeInput = document.querySelector('input[name="scoring-mode"]:checked');
 
     const rounds = Math.max(1, Math.min(10, parseInt(roundInput?.value, 10) || 2));
-    const preferredSize = Math.max(3, Math.min(8, parseInt(tableSizeInput?.value, 10) || 4));
+    const minSize = Math.max(2, Math.min(8, parseInt(minTableSizeInput?.value, 10) || 3));
+    const maxSize = Math.max(minSize, Math.min(8, parseInt(maxTableSizeInput?.value, 10) || 6));
+    const preferredSize = Math.max(minSize, Math.min(maxSize, parseInt(preferredTableSizeInput?.value, 10) || 4));
+    const tbCount = Math.max(1, Math.min(5, parseInt(tbCountInput?.value, 10) || 3));
+    const tbMethod = tbMethodInput?.value || 'priority';
+    const scoringMode = scoringModeInput?.value || 'game';
 
     tournament.totalRounds = rounds;
+    tournament.minTableSize = minSize;
+    tournament.maxTableSize = maxSize;
     tournament.preferredTableSize = preferredSize;
+    tournament.tieBreakersConfig = { count: tbCount, method: tbMethod };
+    tournament.scoringMode = scoringMode;
+    
+    if (scoringMode === 'custom') {
+        readCustomScoringConfig();
+    }
+    
     readLeagueConfig();
 }
 
-// --- LOGIKA WYBORU GRY I GRACZY ---
+function updateScoringMode() {
+    const customScoringConfig = document.getElementById('custom-scoring-config');
+    const isScoringCustom = document.getElementById('scoring-custom')?.checked;
+    
+    if (isScoringCustom) {
+        customScoringConfig.style.display = 'block';
+        renderCustomScoringInputs();
+    } else {
+        customScoringConfig.style.display = 'none';
+    }
+}
+
+function renderCustomScoringInputs() {
+    const container = document.getElementById('scoring-inputs');
+    let html = '';
+    for (let place = 1; place <= 8; place++) {
+        const currentValue = tournament.customScoringByPlace[place] || 0;
+        html += `
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <label style="font-size: 12px; color: #666; margin-bottom: 4px;">Miejsce ${place}</label>
+                <input type="number" id="scoring-place-${place}" min="0" max="10" value="${currentValue}" style="width: 60px; padding: 6px; text-align: center; border: 2px solid #e0e0e0; border-radius: 4px;">
+            </div>
+        `;
+    }
+    container.innerHTML = html;
+}
+
+function readCustomScoringConfig() {
+    for (let place = 1; place <= 8; place++) {
+        const input = document.getElementById(`scoring-place-${place}`);
+        if (input) {
+            tournament.customScoringByPlace[place] = Math.max(0, Math.min(10, parseInt(input.value, 10) || 0));
+        }
+    }
+}
 
 function selectGame() {
     const gameInput = document.getElementById('game-name');
@@ -580,6 +786,33 @@ function updatePlayerList() {
             attendanceList.style.display = 'none';
         }
     }
+    
+    displayPlayerStats();
+}
+
+function displayPlayerStats() {
+    const statsDiv = document.getElementById('player-stats');
+    if (!statsDiv || tournament.players.length === 0) return;
+    
+    const statsHtml = tournament.players.map(player => {
+        const stats = getPlayerStats(player);
+        return `
+            <div style="padding: 12px; background: #f5f5f5; border-radius: 8px; margin-bottom: 8px;">
+                <strong style="color: #667eea;">${player}</strong>
+                <div style="font-size: 13px; color: #666; margin-top: 4px;">
+                    Gier: <span style="font-weight: 600;">${stats.games}</span> | 
+                    Srednia: <span style="font-weight: 600;">${stats.avgPoints}</span> | 
+                    Win Rate: <span style="font-weight: 600;">${stats.winRate}%</span> | 
+                    1. miejsca: <span style="font-weight: 600;">${stats.firstPlaces}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    statsDiv.innerHTML = `
+        <h3 style="color: #667eea; margin-bottom: 12px;">Statystyki graczy</h3>
+        ${statsHtml}
+    `;
 }
 
 function removePlayer(index) {
@@ -637,7 +870,7 @@ function generateRoundTables(roundIndex) {
     
     tournament.rounds[roundIndex].tables = [];
     const totalPlayers = shuffledPlayers.length;
-    const tableSizes = calculateTableStructure(totalPlayers, tournament.preferredTableSize);
+    const tableSizes = calculateTableStructure(totalPlayers, tournament.minTableSize, tournament.maxTableSize, tournament.preferredTableSize);
     let tableNumber = 1;
     let currentIndex = 0;
 
@@ -651,19 +884,33 @@ function generateRoundTables(roundIndex) {
     });
 }
 
-function calculateTableStructure(totalPlayers, preferredSize) {
-    const minTableSize = 3;
-    const safePreferred = Math.max(minTableSize, preferredSize);
-    let tableCount = Math.ceil(totalPlayers / safePreferred);
-    let baseSize = Math.floor(totalPlayers / tableCount);
-
-    while (baseSize < minTableSize && tableCount > 1) {
-        tableCount -= 1;
-        baseSize = Math.floor(totalPlayers / tableCount);
+function calculateTableStructure(totalPlayers, minSize, maxSize, preferredSize) {
+    if (totalPlayers < minSize) {
+        return [];
     }
 
-    const remainder = totalPlayers % tableCount;
-    return Array.from({ length: tableCount }, (_, index) => baseSize + (index < remainder ? 1 : 0));
+    let bestArrangement = null;
+    let bestScore = Infinity;
+
+    for (let tableCount = 1; tableCount <= Math.ceil(totalPlayers / minSize); tableCount++) {
+        const avgSize = totalPlayers / tableCount;
+        if (avgSize < minSize || avgSize > maxSize) continue;
+
+        const baseSize = Math.floor(totalPlayers / tableCount);
+        const remainder = totalPlayers % tableCount;
+
+        if (baseSize < minSize || baseSize + (remainder > 0 ? 1 : 0) > maxSize) continue;
+
+        const sizes = Array.from({ length: tableCount }, (_, index) => baseSize + (index < remainder ? 1 : 0));
+        const score = sizes.reduce((sum, size) => sum + Math.abs(size - preferredSize), 0);
+
+        if (score < bestScore) {
+            bestScore = score;
+            bestArrangement = sizes;
+        }
+    }
+
+    return bestArrangement || [];
 }
 
 function generateNonRepeatingTables() {
@@ -680,7 +927,7 @@ function generateNonRepeatingTables() {
     });
     
     const availablePlayers = getPresentPlayersForCurrentWeek();
-    const tableStructure = calculateTableStructure(availablePlayers.length, tournament.preferredTableSize);
+    const tableStructure = calculateTableStructure(availablePlayers.length, tournament.minTableSize, tournament.maxTableSize, tournament.preferredTableSize);
     let bestArrangement = null;
     let minRepeats = Infinity;
     
@@ -718,7 +965,7 @@ function displayTables() {
     tablesDisplay.innerHTML = `
         <h3 style="color: #764ba2; margin-bottom: 15px;">Runda ${tournament.currentRound + 1}/${tournament.totalRounds}${getLeagueWeekLabel()}</h3>
         <p style="font-size: 0.9em; color: #666; margin-bottom: 15px; background: #fffde7; padding: 10px; border-radius: 8px; border: 1px solid #ffe58f;">
-            💡 <strong>Ręczna edycja:</strong> Wybierz stół obok gracza, aby go przenieść.
+            💡 <strong>Ręczna edycja:</strong> Wybierz stół obok gracza, aby go przenieść. Kliknij X, aby usunąć gracza z turnieju.
         </p>
         ${allTables.map(table => `
             <div class="table">
@@ -727,13 +974,16 @@ function displayTables() {
                     ${table.players.map(player => `
                         <div class="table-player" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; background: white; padding: 8px; border-radius: 6px; border-left: 3px solid #667eea;">
                             <span>${player}</span>
-                            <select onchange="movePlayerToTable('${player}', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid #ddd; font-size: 12px; cursor: pointer;">
-                                ${allTables.map(t => `
-                                    <option value="${t.tableNumber}" ${t.tableNumber === table.tableNumber ? 'selected' : ''}>
-                                        Stół ${t.tableNumber}
-                                    </option>
-                                `).join('')}
-                            </select>
+                            <div style="display: flex; gap: 6px; align-items: center;">
+                                <select onchange="movePlayerToTable('${player}', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid #ddd; font-size: 12px; cursor: pointer;">
+                                    ${allTables.map(t => `
+                                        <option value="${t.tableNumber}" ${t.tableNumber === table.tableNumber ? 'selected' : ''}>
+                                            Stół ${t.tableNumber}
+                                        </option>
+                                    `).join('')}
+                                </select>
+                                <button onclick="removePlayerDuringTournament('${player}')" class="btn-remove-player" title="Usuń gracza">✕</button>
+                            </div>
                         </div>
                     `).join('')}
                     ${table.players.length === 0 ? '<p style="color: #ccc; font-style: italic;">Stół pusty</p>' : ''}
@@ -741,6 +991,33 @@ function displayTables() {
             </div>
         `).join('')}
     `;
+}
+
+function removePlayerDuringTournament(playerName) {
+    if (!confirm(`Usunąć ${playerName} z turnieju? Jego wyniki z poprzednich rund będą zachowane, ale nie będzie grać w pozostałych rundach.`)) {
+        return;
+    }
+
+    const currentRound = tournament.currentRound;
+
+    for (let roundIdx = currentRound; roundIdx < tournament.rounds.length; roundIdx++) {
+        const round = tournament.rounds[roundIdx];
+        round.tables.forEach(table => {
+            table.players = table.players.filter(p => p !== playerName);
+        });
+        if (round.scores) delete round.scores[playerName];
+        if (round.tieBreakers) delete round.tieBreakers[playerName];
+        if (round.tournamentPoints) delete round.tournamentPoints[playerName];
+    }
+
+    if (currentRound < tournament.rounds.length - 1) {
+        for (let roundIdx = currentRound + 1; roundIdx < tournament.rounds.length; roundIdx++) {
+            generateRoundTables(roundIdx);
+        }
+    }
+
+    displayTables();
+    saveTournamentState();
 }
 
 // NOWA FUNKCJA: Logika przenoszenia gracza
@@ -781,6 +1058,7 @@ function startScoring() {
 function displayScoringSection() {
     const scoringDisplay = document.getElementById('scoring-display');
     const currentRound = tournament.rounds[tournament.currentRound];
+    const tbCount = tournament.tieBreakersConfig?.count || TIE_BREAKER_COUNT;
 
     currentRound.tables.forEach(table => {
         table.players.forEach(player => {
@@ -789,21 +1067,28 @@ function displayScoringSection() {
         });
     });
     
+    const tbInputsHtml = Array.from({length: tbCount}, (_, i) => 
+        `<input type="number" onchange="updateTieBreaker('${'PLAYER'}', ${i}, this.value)" value="${'TB_VALUE_' + i}" placeholder="TB${i + 1}">`
+    ).join('');
+    
     scoringDisplay.innerHTML = `
         <h3 style="color: #764ba2; margin-bottom: 20px;">Runda ${tournament.currentRound + 1} - Wyniki${getLeagueWeekLabel()}</h3>
         ${currentRound.tables.map(table => table.players.length > 0 ? `
             <div class="scoring-table">
                 <h3>Stół ${table.tableNumber}</h3>
-                ${table.players.map(player => `
+                ${table.players.map(player => {
+                    const tbInputs = Array.from({length: tbCount}, (_, i) => 
+                        `<input type="number" onchange="updateTieBreaker('${player}', ${i}, this.value)" value="${currentRound.tieBreakers[player][i]}" placeholder="TB${i + 1}">`
+                    ).join('');
+                    return `
                     <div class="score-input-group">
                         <label>${player}:</label>
                         <input type="number" onchange="updateScore('${player}', this.value)" value="${currentRound.scores[player]}" placeholder="Pkt">
-                        <input type="number" onchange="updateTieBreaker('${player}', 0, this.value)" value="${currentRound.tieBreakers[player][0]}" placeholder="TB1">
-                        <input type="number" onchange="updateTieBreaker('${player}', 1, this.value)" value="${currentRound.tieBreakers[player][1]}" placeholder="TB2">
-                        <input type="number" onchange="updateTieBreaker('${player}', 2, this.value)" value="${currentRound.tieBreakers[player][2]}" placeholder="TB3">
+                        ${tbInputs}
                         <span id="tournament-points-${tournament.currentRound}-${player}" style="color: #764ba2; font-weight: bold; min-width: 60px;"></span>
                     </div>
-                `).join('')}
+                `;
+                }).join('')}
                 <button onclick="calculateTablePoints(${table.tableNumber - 1})" style="margin-top: 10px; width: 100%;">Zatwierdź Stół</button>
             </div>
         ` : '').join('')}
@@ -832,9 +1117,18 @@ function calculateTablePoints(tableIndex) {
         return compareTieBreakers(normalizeTieBreakers(currentRound.tieBreakers[a]), normalizeTieBreakers(currentRound.tieBreakers[b]));
     });
     
-    const pointsMap = [3, 2, 1, 0];
+    const getPointsForPlace = (place) => {
+        if (tournament.scoringMode === 'custom') {
+            return tournament.customScoringByPlace[place] || 0;
+        }
+        // Default game scoring: 3, 2, 1, 0
+        const defaultPoints = [3, 2, 1, 0];
+        return defaultPoints[place - 1] || 0;
+    };
+    
     sortedPlayers.forEach((player, index) => {
-        const pts = pointsMap[index] || 0;
+        const place = index + 1;
+        const pts = getPointsForPlace(place);
         currentRound.tournamentPoints[player] = pts;
         const display = document.getElementById(`tournament-points-${tournament.currentRound}-${player}`);
         if (display) display.textContent = `→ ${pts} PT`;
@@ -864,6 +1158,7 @@ function finishTournament() {
         saveTournamentState();
     } else {
         calculateFinalResults();
+        updatePlayerHistory();
         if (isLeagueMode()) {
             tournament.league.weekSummaries[tournament.league.currentWeek] = captureCurrentWeekSummary();
             tournament.league.phase = tournament.league.currentWeek < tournament.league.totalWeeks - 1 ? 'weekly-summary' : 'final-summary';
@@ -913,10 +1208,10 @@ function displaySummary() {
         );
         summaryDisplay.innerHTML += renderLeagueHistory();
         if (summaryActions) {
-            summaryActions.innerHTML = `
+            summaryActions.innerHTML = `<button onclick="printTournament()" class="btn-tertiary">🖨️ Drukuj</button>
                 <button onclick="prepareNextLeagueWeek()" class="btn-primary">Następny tydzień</button>
                 <button onclick="resetTournament()" class="btn-secondary">Przerwij ligę</button>
-            `;
+        `;
         }
         tournament.activeSection = 'summary-section';
         return;
@@ -929,18 +1224,15 @@ function displaySummary() {
         summaryDisplay.innerHTML = `
             <div class="league-summary-layout">
                 <div class="league-summary-main">
-                    ${renderSummaryBlock(
-                        '🏆 Podsumowanie ligi',
-                        `Łącznie ${tournament.league.totalWeeks} tygodni gry.`,
-                        entries
-                    )}
+                    ${renderSummaryBlock('Podsumowanie ligi', `Łącznie ${tournament.league.totalWeeks} tygodni gry.`, entries)}
                 </div>
                 ${renderLeagueBalanceBlock(aggregate)}
             </div>
             ${renderLeagueHistory()}
         `;
         if (summaryActions) {
-            summaryActions.innerHTML = `<button onclick="resetTournament()" class="btn-secondary">Nowa liga</button>`;
+            summaryActions.innerHTML = `<button onclick="printTournament()" class="btn-tertiary">🖨️ Drukuj</button>
+                <button onclick="resetTournament()" class="btn-secondary">Nowa liga</button>`;
         }
         tournament.activeSection = 'summary-section';
         return;
@@ -957,10 +1249,89 @@ function displaySummary() {
 
     summaryDisplay.innerHTML = renderSummaryBlock('🏆 Podsumowanie Turnieju', 'Ranking końcowy turnieju.', entries);
     if (summaryActions) {
-        summaryActions.innerHTML = '<button onclick="resetTournament()" class="btn-secondary">Nowy Turniej</button>';
+        summaryActions.innerHTML = '<button onclick="printTournament()" class="btn-tertiary">🖨️ Drukuj</button><button onclick="resetTournament()" class="btn-secondary">Nowy Turniej</button>';
     }
 
     tournament.activeSection = 'summary-section';
+}
+
+function printTournament() {
+    const printWindow = window.open('', 'PRINT', 'height=600,width=900');
+    const printContent = generatePrintableContent();
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    printWindow.print();
+}
+
+function generatePrintableContent() {
+    const title = tournament.gameName || 'Turniej';
+    const subtitle = isLeagueMode() ? `Liga - Tydzień ${tournament.league.currentWeek + 1}/${tournament.league.totalWeeks}` : 'Turniej';
+    const date = new Date().toLocaleDateString('pl-PL');
+    
+    let summaryHtml = '';
+    if (isLeagueMode() && tournament.league.phase === 'weekly-summary') {
+        const weekSummary = tournament.league.weekSummaries[tournament.league.currentWeek] || captureCurrentWeekSummary();
+        const entries = buildSummaryEntries(weekSummary);
+        summaryHtml = renderPrintSummaryTable(entries);
+    } else if (isLeagueMode() && tournament.league.phase === 'final-summary') {
+        const aggregate = buildLeagueAggregateSummary();
+        const entries = buildSummaryEntries(aggregate);
+        summaryHtml = renderPrintSummaryTable(entries);
+    } else {
+        const entries = buildSummaryEntries({
+            totalTournamentPoints: tournament.totalTournamentPoints,
+            totalGamePoints: tournament.totalGamePoints,
+            firstPlaces: tournament.firstPlaces,
+            highestSingleScore: tournament.highestSingleScore,
+            totalTieBreakers: tournament.totalTieBreakers,
+            totalTieBreakersByIndex: tournament.totalTieBreakersByIndex
+        });
+        summaryHtml = renderPrintSummaryTable(entries);
+    }
+    
+    return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>${title}</title>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body { font-family: Arial, sans-serif; padding: 20px; }
+                h1 { color: #667eea; margin-bottom: 5px; }
+                h2 { color: #764ba2; font-size: 16px; margin-bottom: 10px; }
+                .meta { color: #999; font-size: 12px; margin-bottom: 20px; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                th { background: #667eea; color: white; padding: 10px; text-align: left; }
+                td { padding: 8px; border-bottom: 1px solid #e0e0e0; }
+                tr:nth-child(even) { background: #f5f5f5; }
+                .rank-1 { background: #ffd700 !important; font-weight: bold; }
+                .rank-2 { background: #c0c0c0 !important; font-weight: bold; }
+                .rank-3 { background: #cd7f32 !important; color: white; font-weight: bold; }
+                @media print { body { padding: 10px; } }
+            </style>
+        </head>
+        <body>
+            <h1>${title}</h1>
+            <h2>${subtitle}</h2>
+            <p class="meta">Data: ${date} | Liczba graczy: ${tournament.players.length} | Rund: ${tournament.totalRounds}</p>
+            ${summaryHtml}
+            <p style="margin-top: 30px; font-size: 11px; color: #999;">Wydrukowano z ChemPionship Board Games Tournament Manager</p>
+        </body>
+        </html>
+    `;
+}
+
+function renderPrintSummaryTable(entries) {
+    let html = '<table><thead><tr><th>#</th><th>Gracz</th><th>PT</th><th>Wygrane</th><th>Pkt Gry</th><th>Suma TB</th></tr></thead><tbody>';
+    entries.forEach((entry, i) => {
+        let rowClass = '';
+        if (i === 0) rowClass = 'rank-1';
+        else if (i === 1) rowClass = 'rank-2';
+        else if (i === 2) rowClass = 'rank-3';
+        html += `<tr class="${rowClass}"><td>${i + 1}</td><td>${entry.name}</td><td>${entry.tp}</td><td>${entry.wins}</td><td>${entry.gp}</td><td>${entry.tbs}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    return html;
 }
 
 function resetTournament() {
@@ -971,6 +1342,7 @@ function resetTournament() {
 }
 
 // Start
+loadPlayerHistory();
 readTournamentConfig();
 if (!loadTournamentState()) {
     updatePlayerList();

@@ -14,6 +14,7 @@
         <div class="import-export-bar">
             <button onclick="downloadTournamentExport()" class="btn-tertiary">Eksportuj turniej</button>
             <button onclick="triggerTournamentImport()" class="btn-tertiary">Importuj turniej</button>
+            <button onclick="resetTournament()" class="btn-tertiary btn-tertiary-danger">Resetuj turniej</button>
             <input type="file" id="tournament-import" accept="application/json" onchange="handleTournamentImport(event)" hidden>
         </div>
 
@@ -30,8 +31,29 @@
                     <input type="number" id="round-count" min="1" max="10" value="2">
                 </div>
                 <div class="config-item">
-                    <label for="preferred-table-size">Preferowana liczba uczestników przy stole</label>
-                    <input type="number" id="preferred-table-size" min="3" max="8" value="4">
+                    <label for="min-table-size">Min osób na stole</label>
+                    <input type="number" id="min-table-size" min="2" max="8" value="3">
+                </div>
+                <div class="config-item">
+                    <label for="max-table-size">Max osób na stole</label>
+                    <input type="number" id="max-table-size" min="2" max="8" value="6">
+                </div>
+                <div class="config-item">
+                    <label for="preferred-table-size">Preferowana liczba osób na stole</label>
+                    <input type="number" id="preferred-table-size" min="2" max="8" value="4">
+                </div>
+                <div class="config-item">
+                    <label for="tb-count">Liczba tie-breaker'ów</label>
+                    <input type="number" id="tb-count" min="1" max="5" value="3">
+                </div>
+                <div class="config-item">
+                    <label for="tb-method">Metoda rozstrzygania tie-breaker'ów</label>
+                    <select id="tb-method">
+                        <option value="priority">Priorytet (TB1 → TB2 → TB3...)</option>
+                        <option value="sum">Suma</option>
+                        <option value="average">Średnia</option>
+                        <option value="max">Maksimum</option>
+                    </select>
                 </div>
                 <div class="config-item">
                     <label style="display: flex; align-items: center; gap: 8px;">
@@ -39,6 +61,30 @@
                         Tryb ligi
                     </label>
                     <input type="number" id="league-weeks" min="2" max="52" value="4" placeholder="Liczba tygodni">
+                </div>
+                <div class="config-item">
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="radio" name="scoring-mode" value="game" id="scoring-game" checked onchange="updateScoringMode()">
+                        Punkty z gry
+                    </label>
+                </div>
+                <div class="config-item">
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="radio" name="scoring-mode" value="custom" id="scoring-custom" onchange="updateScoringMode()">
+                        Custom scoring
+                    </label>
+                </div>
+                <div id="custom-scoring-config" style="display: none; padding: 15px; background: #f5f5f5; border-radius: 8px; margin-top: 12px;">
+                    <h4 style="color: #667eea; margin-bottom: 12px;">Punkty za miejsca</h4>
+                    <div id="scoring-inputs" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 10px;"></div>
+                </div>
+            </div>
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e0e0e0;">
+                <h3 style="color: #667eea; margin-bottom: 15px;">Szablony turniejów</h3>
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                    <button onclick="applyTournamentTemplate('quick')" class="btn-secondary" style="flex: 1; min-width: 150px;">⚡ Quick (3 rundy)</button>
+                    <button onclick="applyTournamentTemplate('standard')" class="btn-secondary" style="flex: 1; min-width: 150px;">📋 Standard (4 rundy)</button>
+                    <button onclick="applyTournamentTemplate('extended')" class="btn-secondary" style="flex: 1; min-width: 150px;">🏆 Extended (5 rund)</button>
                 </div>
             </div>
             <div id="selected-game"></div>
@@ -53,6 +99,7 @@
             </div>
             <div id="player-list"></div>
             <div id="attendance-list" class="attendance-list"></div>
+            <div id="player-stats" style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e0e0e0;"></div>
             <button onclick="generateTables()" class="btn-primary" id="generate-tables-btn" style="display: none;">
                 Losuj Stoły
             </button>
