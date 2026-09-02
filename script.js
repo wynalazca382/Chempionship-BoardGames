@@ -27,6 +27,8 @@ let tournament = {
     totalGamePoints: {},
     firstPlaces: {},
     highestSingleScore: {},
+    totalNormalizedScore: {},
+    highestNormalizedScore: {},
     totalTieBreakers: {},
     totalTieBreakersByIndex: {}
 };
@@ -196,16 +198,52 @@ function renderSelectedGameSummary() {
     `;
 }
 
-function buildSummaryEntries(summarySource) {
+// Bezpośrednie starcie: dla dwóch remisujących graczy sprawdza wszystkie
+// rundy, w których siedzieli przy tym samym stole, i liczy w ilu z nich
+// który zajął wyższe miejsce. Zwraca różnicę "zwycięstw" (analogicznie do
+// pozostałych kryteriów: dodatnia wartość = b lepszy, ujemna = a lepszy).
+// Jeśli gracze nigdy nie grali razem, zwraca 0 (kryterium nie rozstrzyga).
+function compareHeadToHead(playerA, playerB, rounds) {
+    let aWins = 0;
+    let bWins = 0;
+
+    (rounds || []).forEach(round => {
+        const table = (round.tables || []).find(t =>
+            Array.isArray(t.players) && t.players.includes(playerA) && t.players.includes(playerB)
+        );
+        if (!table || !round.places) return;
+
+        const placeA = round.places[playerA];
+        const placeB = round.places[playerB];
+        if (placeA === undefined || placeB === undefined) return;
+
+        if (placeA < placeB) aWins++;
+        else if (placeB < placeA) bWins++;
+    });
+
+    return bWins - aWins;
+}
+
+function buildSummaryEntries(summarySource, roundsForH2H) {
+    const rounds = roundsForH2H || tournament.rounds;
     return [...tournament.players].map(player => ({
         name: player,
         tp: summarySource.totalTournamentPoints[player] || 0,
         wins: summarySource.firstPlaces[player] || 0,
         gp: summarySource.totalGamePoints[player] || 0,
         high: summarySource.highestSingleScore[player] || 0,
+        gpNorm: summarySource.totalNormalizedScore ? (summarySource.totalNormalizedScore[player] || 0) : 0,
+        highNorm: summarySource.highestNormalizedScore ? (summarySource.highestNormalizedScore[player] || 0) : 0,
         tbi: summarySource.totalTieBreakersByIndex[player] || [0, 0, 0],
         tbs: summarySource.totalTieBreakers[player] || 0
-    })).sort((a, b) => b.tp - a.tp || b.wins - a.wins || b.gp - a.gp || b.high - a.high || compareTieBreakers(a.tbi, b.tbi));
+    })).sort((a, b) =>
+        b.tp - a.tp ||
+        b.wins - a.wins ||
+        b.gpNorm - a.gpNorm ||
+        b.highNorm - a.highNorm ||
+        compareHeadToHead(a.name, b.name, rounds) ||
+        compareTieBreakers(a.tbi, b.tbi)
+    );
 }
 
 function renderSummaryBlock(title, subtitle, entries) {
@@ -213,28 +251,28 @@ function renderSummaryBlock(title, subtitle, entries) {
         <h3 style="color: #764ba2; margin-bottom: 12px;">${title}</h3>
         ${subtitle ? `<p style="margin-bottom: 16px; color: #666;">${subtitle}</p>` : ''}
         <table class="summary-table">
-            <thead><tr><th>#</th><th>Gracz</th><th>PT</th><th>W</th><th>Pkt Gry</th><th>Suma TB</th></tr></thead>
+            <thead><tr><th>#</th><th>Gracz</th><th>PT</th><th>W</th><th>Pkt Gry</th><th>Wynik znorm.</th><th>Suma TB</th></tr></thead>
             <tbody>
                 ${entries.map((p, i) => `<tr class="${i < 3 ? 'rank-' + (i + 1) : ''}">
-                    <td>${i + 1}</td><td>${p.name}</td><td>${p.tp}</td><td>${p.wins}</td><td>${p.gp}</td><td>${p.tbs}</td>
+                    <td>${i + 1}</td><td>${p.name}</td><td>${p.tp}</td><td>${p.wins}</td><td>${p.gp}</td><td>${p.gpNorm}%</td><td>${p.tbs}</td>
                 </tr>`).join('')}
             </tbody>
         </table>
     `;
 }
 
-function renderLeagueBalanceBlock(summarySource) {
-    const entries = buildSummaryEntries(summarySource);
+function renderLeagueBalanceBlock(summarySource, roundsForH2H) {
+    const entries = buildSummaryEntries(summarySource, roundsForH2H);
 
     return `
         <div class="league-balance-panel">
             <h3 style="color: #764ba2; margin-bottom: 12px;">Bilans ligi</h3>
             <p style="margin-bottom: 16px; color: #666;">Zestawienie całej ligi po wszystkich tygodniach.</p>
             <table class="summary-table league-balance-table">
-                <thead><tr><th>#</th><th>Gracz</th><th>PT</th><th>W</th><th>Pkt Gry</th><th>Suma TB</th></tr></thead>
+                <thead><tr><th>#</th><th>Gracz</th><th>PT</th><th>W</th><th>Pkt Gry</th><th>Wynik znorm.</th><th>Suma TB</th></tr></thead>
                 <tbody>
                     ${entries.map((p, i) => `<tr class="${i < 3 ? 'rank-' + (i + 1) : ''}">
-                        <td>${i + 1}</td><td>${p.name}</td><td>${p.tp}</td><td>${p.wins}</td><td>${p.gp}</td><td>${p.tbs}</td>
+                        <td>${i + 1}</td><td>${p.name}</td><td>${p.tp}</td><td>${p.wins}</td><td>${p.gp}</td><td>${p.gpNorm}%</td><td>${p.tbs}</td>
                     </tr>`).join('')}
                 </tbody>
             </table>
@@ -249,8 +287,11 @@ function captureCurrentWeekSummary() {
         totalGamePoints: JSON.parse(JSON.stringify(tournament.totalGamePoints)),
         firstPlaces: JSON.parse(JSON.stringify(tournament.firstPlaces)),
         highestSingleScore: JSON.parse(JSON.stringify(tournament.highestSingleScore)),
+        totalNormalizedScore: JSON.parse(JSON.stringify(tournament.totalNormalizedScore)),
+        highestNormalizedScore: JSON.parse(JSON.stringify(tournament.highestNormalizedScore)),
         totalTieBreakers: JSON.parse(JSON.stringify(tournament.totalTieBreakers)),
-        totalTieBreakersByIndex: JSON.parse(JSON.stringify(tournament.totalTieBreakersByIndex))
+        totalTieBreakersByIndex: JSON.parse(JSON.stringify(tournament.totalTieBreakersByIndex)),
+        rounds: JSON.parse(JSON.stringify(tournament.rounds))
     };
 }
 
@@ -260,6 +301,8 @@ function buildLeagueAggregateSummary() {
         totalGamePoints: {},
         firstPlaces: {},
         highestSingleScore: {},
+        totalNormalizedScore: {},
+        highestNormalizedScore: {},
         totalTieBreakers: {},
         totalTieBreakersByIndex: {}
     };
@@ -269,6 +312,8 @@ function buildLeagueAggregateSummary() {
         aggregate.totalGamePoints[player] = 0;
         aggregate.firstPlaces[player] = 0;
         aggregate.highestSingleScore[player] = 0;
+        aggregate.totalNormalizedScore[player] = 0;
+        aggregate.highestNormalizedScore[player] = 0;
         aggregate.totalTieBreakers[player] = 0;
         aggregate.totalTieBreakersByIndex[player] = [0, 0, 0];
     });
@@ -279,16 +324,22 @@ function buildLeagueAggregateSummary() {
             const gamePoints = weekSummary?.totalGamePoints?.[player] || 0;
             const wins = weekSummary?.firstPlaces?.[player] || 0;
             const highestScore = weekSummary?.highestSingleScore?.[player] || 0;
+            const normalizedScore = weekSummary?.totalNormalizedScore?.[player] || 0;
+            const highestNormalized = weekSummary?.highestNormalizedScore?.[player] || 0;
             const tieBreakers = weekSummary?.totalTieBreakers?.[player] || 0;
             const tieBreakerValues = weekSummary?.totalTieBreakersByIndex?.[player] || [0, 0, 0];
 
             aggregate.totalTournamentPoints[player] += tournamentPoints;
             aggregate.totalGamePoints[player] += gamePoints;
             aggregate.firstPlaces[player] += wins;
+            aggregate.totalNormalizedScore[player] += normalizedScore;
             aggregate.totalTieBreakers[player] += tieBreakers;
             aggregate.totalTieBreakersByIndex[player] = aggregate.totalTieBreakersByIndex[player].map((value, index) => value + (tieBreakerValues[index] || 0));
             if (highestScore > aggregate.highestSingleScore[player]) {
                 aggregate.highestSingleScore[player] = highestScore;
+            }
+            if (highestNormalized > aggregate.highestNormalizedScore[player]) {
+                aggregate.highestNormalizedScore[player] = highestNormalized;
             }
         });
     });
@@ -368,6 +419,8 @@ function resetWeeklyTournamentState() {
     tournament.totalGamePoints = {};
     tournament.firstPlaces = {};
     tournament.highestSingleScore = {};
+    tournament.totalNormalizedScore = {};
+    tournament.highestNormalizedScore = {};
     tournament.totalTieBreakers = {};
     tournament.totalTieBreakersByIndex = {};
     tournament.currentRound = 0;
@@ -487,7 +540,9 @@ function normalizeTournamentData(data) {
             tables: Array.isArray(round.tables) ? round.tables : [],
             scores: round.scores && typeof round.scores === 'object' ? round.scores : {},
             tieBreakers: round.tieBreakers && typeof round.tieBreakers === 'object' ? round.tieBreakers : {},
-            tournamentPoints: round.tournamentPoints && typeof round.tournamentPoints === 'object' ? round.tournamentPoints : {}
+            tournamentPoints: round.tournamentPoints && typeof round.tournamentPoints === 'object' ? round.tournamentPoints : {},
+            places: round.places && typeof round.places === 'object' ? round.places : {},
+            normalizedScores: round.normalizedScores && typeof round.normalizedScores === 'object' ? round.normalizedScores : {}
         };
     });
 
@@ -495,6 +550,8 @@ function normalizeTournamentData(data) {
     imported.totalGamePoints = imported.totalGamePoints && typeof imported.totalGamePoints === 'object' ? imported.totalGamePoints : {};
     imported.firstPlaces = imported.firstPlaces && typeof imported.firstPlaces === 'object' ? imported.firstPlaces : {};
     imported.highestSingleScore = imported.highestSingleScore && typeof imported.highestSingleScore === 'object' ? imported.highestSingleScore : {};
+    imported.totalNormalizedScore = imported.totalNormalizedScore && typeof imported.totalNormalizedScore === 'object' ? imported.totalNormalizedScore : {};
+    imported.highestNormalizedScore = imported.highestNormalizedScore && typeof imported.highestNormalizedScore === 'object' ? imported.highestNormalizedScore : {};
     imported.totalTieBreakers = imported.totalTieBreakers && typeof imported.totalTieBreakers === 'object' ? imported.totalTieBreakers : {};
     imported.totalTieBreakersByIndex = imported.totalTieBreakersByIndex && typeof imported.totalTieBreakersByIndex === 'object' ? imported.totalTieBreakersByIndex : {};
     imported.league = imported.league && typeof imported.league === 'object' ? imported.league : createLeagueState();
@@ -593,7 +650,9 @@ function createRounds(totalRounds) {
         tables: [],
         scores: {},
         tieBreakers: {},
-        tournamentPoints: {}
+        tournamentPoints: {},
+        places: {},
+        normalizedScores: {}
     }));
 }
 
@@ -849,6 +908,8 @@ function generateTables() {
     tournament.totalGamePoints = {};
     tournament.firstPlaces = {};
     tournament.highestSingleScore = {};
+    tournament.totalNormalizedScore = {};
+    tournament.highestNormalizedScore = {};
     tournament.totalTieBreakers = {};
     
     tournament.currentRound = 0;
@@ -1107,31 +1168,51 @@ function updateTieBreaker(player, index, value) {
     saveTournamentState();
 }
 
+// Punkty turniejowe za miejsce - stała tabela niezależna od wielkości stołu
+// (1. miejsce = 3 pkt, 2. = 2 pkt, 3. = 1 pkt, 4. = 0 pkt w trybie domyślnym,
+// albo wartości z customScoringByPlace w trybie custom).
+function getPointsForPlace(place) {
+    if (tournament.scoringMode === 'custom') {
+        return tournament.customScoringByPlace[place] || 0;
+    }
+    const defaultPoints = [3, 2, 1, 0];
+    return defaultPoints[place - 1] || 0;
+}
+
 function calculateTablePoints(tableIndex) {
     const currentRound = tournament.rounds[tournament.currentRound];
     const table = currentRound.tables[tableIndex];
-    
+
+    if (!currentRound.places || typeof currentRound.places !== 'object') {
+        currentRound.places = {};
+    }
+    if (!currentRound.normalizedScores || typeof currentRound.normalizedScores !== 'object') {
+        currentRound.normalizedScores = {};
+    }
+
     const sortedPlayers = [...table.players].sort((a, b) => {
         const scoreDiff = currentRound.scores[b] - currentRound.scores[a];
         if (scoreDiff !== 0) return scoreDiff;
         return compareTieBreakers(normalizeTieBreakers(currentRound.tieBreakers[a]), normalizeTieBreakers(currentRound.tieBreakers[b]));
     });
-    
-    const getPointsForPlace = (place) => {
-        if (tournament.scoringMode === 'custom') {
-            return tournament.customScoringByPlace[place] || 0;
-        }
-        // Default game scoring: 3, 2, 1, 0
-        const defaultPoints = [3, 2, 1, 0];
-        return defaultPoints[place - 1] || 0;
-    };
-    
+
+    // Wynik zwycięzcy stołu - punkt odniesienia do normalizacji surowego wyniku z gry,
+    // żeby stoły z mniejszą liczbą graczy (naturalnie wyższe wyniki) nie miały
+    // przewagi w tie-breakach opartych o "Pkt Gry".
+    const winnerScore = currentRound.scores[sortedPlayers[0]] || 0;
+
     sortedPlayers.forEach((player, index) => {
         const place = index + 1;
         const pts = getPointsForPlace(place);
+        const rawScore = currentRound.scores[player] || 0;
+        const normalizedScore = winnerScore > 0 ? Math.round((rawScore / winnerScore) * 1000) / 10 : 0;
+
         currentRound.tournamentPoints[player] = pts;
+        currentRound.places[player] = place;
+        currentRound.normalizedScores[player] = normalizedScore;
+
         const display = document.getElementById(`tournament-points-${tournament.currentRound}-${player}`);
-        if (display) display.textContent = `→ ${pts} PT`;
+        if (display) display.textContent = `→ ${pts} PT (${place}. miejsce, ${normalizedScore}% wyniku zwycięzcy stołu)`;
     });
 
     saveTournamentState();
@@ -1175,20 +1256,26 @@ function calculateFinalResults() {
         tournament.totalGamePoints[p] = 0;
         tournament.firstPlaces[p] = 0;
         tournament.highestSingleScore[p] = 0;
+        tournament.totalNormalizedScore[p] = 0;
+        tournament.highestNormalizedScore[p] = 0;
         tournament.totalTieBreakers[p] = 0;
         tournament.totalTieBreakersByIndex[p] = [0, 0, 0];
 
         tournament.rounds.forEach(r => {
             const gp = r.scores[p] || 0;
             const tp = r.tournamentPoints[p] || 0;
+            const place = r.places ? r.places[p] : undefined;
+            const normScore = r.normalizedScores ? (r.normalizedScores[p] || 0) : 0;
             const tbs = normalizeTieBreakers(r.tieBreakers[p]);
             
             tournament.totalTournamentPoints[p] += tp;
             tournament.totalGamePoints[p] += gp;
+            tournament.totalNormalizedScore[p] += normScore;
             tournament.totalTieBreakers[p] += tbs.reduce((a, b) => a + b, 0);
             tbs.forEach((v, i) => tournament.totalTieBreakersByIndex[p][i] += v);
-            if (tp === 3) tournament.firstPlaces[p]++;
+            if (place === 1) tournament.firstPlaces[p]++;
             if (gp > tournament.highestSingleScore[p]) tournament.highestSingleScore[p] = gp;
+            if (normScore > tournament.highestNormalizedScore[p]) tournament.highestNormalizedScore[p] = normScore;
         });
     });
 }
@@ -1199,7 +1286,7 @@ function displaySummary() {
 
     if (isLeagueMode() && tournament.league.phase === 'weekly-summary') {
         const weekSummary = tournament.league.weekSummaries[tournament.league.currentWeek] || captureCurrentWeekSummary();
-        const entries = buildSummaryEntries(weekSummary);
+        const entries = buildSummaryEntries(weekSummary, weekSummary.rounds || tournament.rounds);
 
         summaryDisplay.innerHTML = renderSummaryBlock(
             `Podsumowanie dnia - tydzień ${tournament.league.currentWeek + 1}/${tournament.league.totalWeeks}`,
@@ -1219,14 +1306,15 @@ function displaySummary() {
 
     if (isLeagueMode() && tournament.league.phase === 'final-summary') {
         const aggregate = buildLeagueAggregateSummary();
-        const entries = buildSummaryEntries(aggregate);
+        const leagueRounds = (tournament.league?.weekSummaries || []).flatMap(w => w.rounds || []);
+        const entries = buildSummaryEntries(aggregate, leagueRounds);
 
         summaryDisplay.innerHTML = `
             <div class="league-summary-layout">
                 <div class="league-summary-main">
                     ${renderSummaryBlock('Podsumowanie ligi', `Łącznie ${tournament.league.totalWeeks} tygodni gry.`, entries)}
                 </div>
-                ${renderLeagueBalanceBlock(aggregate)}
+                ${renderLeagueBalanceBlock(aggregate, leagueRounds)}
             </div>
             ${renderLeagueHistory()}
         `;
@@ -1243,6 +1331,8 @@ function displaySummary() {
         totalGamePoints: tournament.totalGamePoints,
         firstPlaces: tournament.firstPlaces,
         highestSingleScore: tournament.highestSingleScore,
+        totalNormalizedScore: tournament.totalNormalizedScore,
+        highestNormalizedScore: tournament.highestNormalizedScore,
         totalTieBreakers: tournament.totalTieBreakers,
         totalTieBreakersByIndex: tournament.totalTieBreakersByIndex
     });
@@ -1271,11 +1361,12 @@ function generatePrintableContent() {
     let summaryHtml = '';
     if (isLeagueMode() && tournament.league.phase === 'weekly-summary') {
         const weekSummary = tournament.league.weekSummaries[tournament.league.currentWeek] || captureCurrentWeekSummary();
-        const entries = buildSummaryEntries(weekSummary);
+        const entries = buildSummaryEntries(weekSummary, weekSummary.rounds || tournament.rounds);
         summaryHtml = renderPrintSummaryTable(entries);
     } else if (isLeagueMode() && tournament.league.phase === 'final-summary') {
         const aggregate = buildLeagueAggregateSummary();
-        const entries = buildSummaryEntries(aggregate);
+        const leagueRounds = (tournament.league?.weekSummaries || []).flatMap(w => w.rounds || []);
+        const entries = buildSummaryEntries(aggregate, leagueRounds);
         summaryHtml = renderPrintSummaryTable(entries);
     } else {
         const entries = buildSummaryEntries({
@@ -1283,6 +1374,8 @@ function generatePrintableContent() {
             totalGamePoints: tournament.totalGamePoints,
             firstPlaces: tournament.firstPlaces,
             highestSingleScore: tournament.highestSingleScore,
+            totalNormalizedScore: tournament.totalNormalizedScore,
+            highestNormalizedScore: tournament.highestNormalizedScore,
             totalTieBreakers: tournament.totalTieBreakers,
             totalTieBreakersByIndex: tournament.totalTieBreakersByIndex
         });
@@ -1322,13 +1415,13 @@ function generatePrintableContent() {
 }
 
 function renderPrintSummaryTable(entries) {
-    let html = '<table><thead><tr><th>#</th><th>Gracz</th><th>PT</th><th>Wygrane</th><th>Pkt Gry</th><th>Suma TB</th></tr></thead><tbody>';
+    let html = '<table><thead><tr><th>#</th><th>Gracz</th><th>PT</th><th>Wygrane</th><th>Pkt Gry</th><th>Wynik znorm.</th><th>Suma TB</th></tr></thead><tbody>';
     entries.forEach((entry, i) => {
         let rowClass = '';
         if (i === 0) rowClass = 'rank-1';
         else if (i === 1) rowClass = 'rank-2';
         else if (i === 2) rowClass = 'rank-3';
-        html += `<tr class="${rowClass}"><td>${i + 1}</td><td>${entry.name}</td><td>${entry.tp}</td><td>${entry.wins}</td><td>${entry.gp}</td><td>${entry.tbs}</td></tr>`;
+        html += `<tr class="${rowClass}"><td>${i + 1}</td><td>${entry.name}</td><td>${entry.tp}</td><td>${entry.wins}</td><td>${entry.gp}</td><td>${entry.gpNorm}%</td><td>${entry.tbs}</td></tr>`;
     });
     html += '</tbody></table>';
     return html;
