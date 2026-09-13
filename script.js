@@ -250,6 +250,12 @@ function renderTournamentStats(rounds) {
     const validRounds = (rounds || []).filter(round => round && Array.isArray(round.tables));
     const tableCount = validRounds.reduce((total, round) => total + round.tables.length, 0);
     const gamePoints = validRounds.reduce((total, round) => total + Object.values(round.scores || {}).reduce((sum, score) => sum + (Number(score) || 0), 0), 0);
+    const tournamentPoints = validRounds.reduce((total, round) => total + Object.values(round.tournamentPoints || {}).reduce((sum, score) => sum + (Number(score) || 0), 0), 0);
+    const wins = validRounds.reduce((total, round) => total + Object.values(round.places || {}).filter(place => Number(place) === 1).length, 0);
+    const highestScore = validRounds.reduce((highest, round) => Math.max(highest, ...Object.values(round.scores || {}).map(score => Number(score) || 0)), 0);
+    const playedPlayerCount = validRounds.reduce((total, round) => total + new Set(round.tables.flatMap(table => table.players || [])).size, 0);
+    const averageGamePoints = playedPlayerCount ? (gamePoints / playedPlayerCount).toFixed(1) : '0.0';
+    const averageTournamentPoints = playedPlayerCount ? (tournamentPoints / playedPlayerCount).toFixed(1) : '0.0';
     const roundRows = validRounds.map((round, index) => {
         const players = round.tables.flatMap(table => table.players || []);
         const scores = players.map(player => Number(round.scores?.[player]) || 0);
@@ -271,6 +277,10 @@ function renderTournamentStats(rounds) {
                 <div><strong>${validRounds.length}</strong><span>Rund</span></div>
                 <div><strong>${tableCount}</strong><span>Stołów</span></div>
                 <div><strong>${gamePoints}</strong><span>Pkt gry łącznie</span></div>
+                <div><strong>${averageGamePoints}</strong><span>Śr. pkt gry</span></div>
+                <div><strong>${averageTournamentPoints}</strong><span>Śr. PT</span></div>
+                <div><strong>${wins}</strong><span>Wygrane stoły</span></div>
+                <div><strong>${highestScore}</strong><span>Najwyższy wynik</span></div>
             </div>
             <div class="stats-table-wrapper">
                 <table class="summary-table stats-table">
