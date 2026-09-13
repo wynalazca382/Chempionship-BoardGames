@@ -1168,31 +1168,21 @@ function displayScoringSection() {
     const tbInputsHtml = Array.from({length: tbCount}, (_, i) => 
         `<input type="number" onchange="updateTieBreaker('${'PLAYER'}', ${i}, this.value)" value="${'TB_VALUE_' + i}" placeholder="TB${i + 1}">`
     ).join('');
-    const scoringHeaders = `
-        <div class="score-input-group score-input-group-header" aria-hidden="true">
-            <span>Gracz</span>
-            <span>Pkt gry</span>
-            ${Array.from({length: tbCount}, (_, i) => `<span>TB${i + 1}</span>`).join('')}
-            <span>Pkt turniejowe</span>
-        </div>
-    `;
-    
     scoringDisplay.innerHTML = `
         <h3 style="color: #764ba2; margin-bottom: 20px;">Runda ${tournament.currentRound + 1} - Wyniki${getLeagueWeekLabel()}</h3>
         ${currentRound.tables.map(table => table.players.length > 0 ? `
             <div class="scoring-table">
                 <h3>Stół ${table.tableNumber}</h3>
-                ${scoringHeaders}
                 ${table.players.map(player => {
                     const tbInputs = Array.from({length: tbCount}, (_, i) => 
-                        `<input type="number" onchange="updateTieBreaker('${player}', ${i}, this.value)" value="${currentRound.tieBreakers[player][i]}" placeholder="TB${i + 1}">`
+                        `<div class="score-field"><span>TB${i + 1}</span><input type="number" onchange="updateTieBreaker('${player}', ${i}, this.value)" value="${currentRound.tieBreakers[player][i]}" aria-label="TB${i + 1} dla ${player}"></div>`
                     ).join('');
                     return `
                     <div class="score-input-group">
                         <label>${player}:</label>
-                        <input type="number" onchange="updateScore('${player}', this.value)" value="${currentRound.scores[player]}" placeholder="Pkt">
+                        <div class="score-field"><span>Pkt gry</span><input type="number" onchange="updateScore('${player}', this.value)" value="${currentRound.scores[player]}" aria-label="Punkty gry dla ${player}"></div>
                         ${tbInputs}
-                        <span id="tournament-points-${tournament.currentRound}-${player}" style="color: #764ba2; font-weight: bold; min-width: 60px;"></span>
+                        <div class="score-field score-field-result"><span>Pkt turniejowe</span><strong id="tournament-points-${tournament.currentRound}-${player}"></strong></div>
                     </div>
                 `;
                 }).join('')}

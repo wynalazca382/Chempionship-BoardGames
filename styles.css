@@ -313,23 +313,30 @@ button:active {
     font-weight: 600;
 }
 
-.score-input-group-header {
-    color: #667eea;
-    font-size: 12px;
-    font-weight: 700;
-    margin-bottom: 8px;
-}
-
-.score-input-group-header span:first-child {
-    flex: 1;
-}
-
-.score-input-group-header span:not(:first-child) {
+.score-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     width: 110px;
+}
+
+.score-field > span {
+    color: #667eea;
+    font-size: 11px;
+    font-weight: 700;
     text-align: center;
 }
 
-.score-input-group input {
+.score-field-result strong {
+    color: #764ba2;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+}
+
+.score-field input {
     width: 110px;
 }
 
