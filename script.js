@@ -246,7 +246,43 @@ function buildSummaryEntries(summarySource, roundsForH2H) {
     );
 }
 
-function renderSummaryBlock(title, subtitle, entries) {
+function renderTournamentStats(rounds) {
+    const validRounds = (rounds || []).filter(round => round && Array.isArray(round.tables));
+    const tableCount = validRounds.reduce((total, round) => total + round.tables.length, 0);
+    const gamePoints = validRounds.reduce((total, round) => total + Object.values(round.scores || {}).reduce((sum, score) => sum + (Number(score) || 0), 0), 0);
+    const roundRows = validRounds.map((round, index) => {
+        const players = round.tables.flatMap(table => table.players || []);
+        const scores = players.map(player => Number(round.scores?.[player]) || 0);
+        const winnerScore = scores.length ? Math.max(...scores) : 0;
+        return `<tr>
+            <td>Runda ${index + 1}</td>
+            <td>${round.tables.filter(table => (table.players || []).length > 0).length}</td>
+            <td>${players.length}</td>
+            <td>${scores.reduce((sum, score) => sum + score, 0)}</td>
+            <td>${winnerScore}</td>
+        </tr>`;
+    }).join('');
+
+    return `
+        <div class="tournament-stats">
+            <h3>Statystyki turnieju</h3>
+            <div class="tournament-stats-cards">
+                <div><strong>${tournament.players.length}</strong><span>Graczy</span></div>
+                <div><strong>${validRounds.length}</strong><span>Rund</span></div>
+                <div><strong>${tableCount}</strong><span>Stołów</span></div>
+                <div><strong>${gamePoints}</strong><span>Pkt gry łącznie</span></div>
+            </div>
+            <div class="stats-table-wrapper">
+                <table class="summary-table stats-table">
+                    <thead><tr><th>Runda</th><th>Stoły</th><th>Gracze</th><th>Suma pkt gry</th><th>Najwyższy wynik</th></tr></thead>
+                    <tbody>${roundRows || '<tr><td colspan="5">Brak danych rund</td></tr>'}</tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+function renderSummaryBlock(title, subtitle, entries, rounds) {
     return `
         <h3 style="color: #764ba2; margin-bottom: 12px;">${title}</h3>
         ${subtitle ? `<p style="margin-bottom: 16px; color: #666;">${subtitle}</p>` : ''}
@@ -258,6 +294,7 @@ function renderSummaryBlock(title, subtitle, entries) {
                 </tr>`).join('')}
             </tbody>
         </table>
+        ${renderTournamentStats(rounds)}
     `;
 }
 
@@ -1131,12 +1168,21 @@ function displayScoringSection() {
     const tbInputsHtml = Array.from({length: tbCount}, (_, i) => 
         `<input type="number" onchange="updateTieBreaker('${'PLAYER'}', ${i}, this.value)" value="${'TB_VALUE_' + i}" placeholder="TB${i + 1}">`
     ).join('');
+    const scoringHeaders = `
+        <div class="score-input-group score-input-group-header" aria-hidden="true">
+            <span>Gracz</span>
+            <span>Pkt gry</span>
+            ${Array.from({length: tbCount}, (_, i) => `<span>TB${i + 1}</span>`).join('')}
+            <span>Pkt turniejowe</span>
+        </div>
+    `;
     
     scoringDisplay.innerHTML = `
         <h3 style="color: #764ba2; margin-bottom: 20px;">Runda ${tournament.currentRound + 1} - Wyniki${getLeagueWeekLabel()}</h3>
         ${currentRound.tables.map(table => table.players.length > 0 ? `
             <div class="scoring-table">
                 <h3>Stół ${table.tableNumber}</h3>
+                ${scoringHeaders}
                 ${table.players.map(player => {
                     const tbInputs = Array.from({length: tbCount}, (_, i) => 
                         `<input type="number" onchange="updateTieBreaker('${player}', ${i}, this.value)" value="${currentRound.tieBreakers[player][i]}" placeholder="TB${i + 1}">`
@@ -1234,8 +1280,9 @@ function finishTournament() {
         tournament.currentRound += 1;
         generateRoundTables(tournament.currentRound);
         displayTables();
-        document.getElementById('scoring-section').classList.remove('active');
+        setActiveSection('tables-section');
         document.getElementById('start-scoring-btn').style.display = 'block';
+        document.getElementById('finish-btn').style.display = 'none';
         saveTournamentState();
     } else {
         calculateFinalResults();
@@ -1291,7 +1338,8 @@ function displaySummary() {
         summaryDisplay.innerHTML = renderSummaryBlock(
             `Podsumowanie dnia - tydzień ${tournament.league.currentWeek + 1}/${tournament.league.totalWeeks}`,
             'Wyniki bieżącego tygodnia ligowego.',
-            entries
+            entries,
+            weekSummary.rounds || tournament.rounds
         );
         summaryDisplay.innerHTML += renderLeagueHistory();
         if (summaryActions) {
@@ -1312,7 +1360,7 @@ function displaySummary() {
         summaryDisplay.innerHTML = `
             <div class="league-summary-layout">
                 <div class="league-summary-main">
-                    ${renderSummaryBlock('Podsumowanie ligi', `Łącznie ${tournament.league.totalWeeks} tygodni gry.`, entries)}
+                    ${renderSummaryBlock('Podsumowanie ligi', `Łącznie ${tournament.league.totalWeeks} tygodni gry.`, entries, leagueRounds)}
                 </div>
                 ${renderLeagueBalanceBlock(aggregate, leagueRounds)}
             </div>
@@ -1337,7 +1385,7 @@ function displaySummary() {
         totalTieBreakersByIndex: tournament.totalTieBreakersByIndex
     });
 
-    summaryDisplay.innerHTML = renderSummaryBlock('🏆 Podsumowanie Turnieju', 'Ranking końcowy turnieju.', entries);
+    summaryDisplay.innerHTML = renderSummaryBlock('🏆 Podsumowanie Turnieju', 'Ranking końcowy turnieju.', entries, tournament.rounds);
     if (summaryActions) {
         summaryActions.innerHTML = '<button onclick="printTournament()" class="btn-tertiary">🖨️ Drukuj</button><button onclick="resetTournament()" class="btn-secondary">Nowy Turniej</button>';
     }

@@ -313,6 +313,22 @@ button:active {
     font-weight: 600;
 }
 
+.score-input-group-header {
+    color: #667eea;
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.score-input-group-header span:first-child {
+    flex: 1;
+}
+
+.score-input-group-header span:not(:first-child) {
+    width: 110px;
+    text-align: center;
+}
+
 .score-input-group input {
     width: 110px;
 }
@@ -347,6 +363,55 @@ button:active {
 
 .summary-actions button {
     flex: 1;
+}
+
+.tournament-stats {
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 2px solid #e0e0e0;
+}
+
+.tournament-stats h3 {
+    color: #764ba2;
+    margin-bottom: 14px;
+}
+
+.tournament-stats-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+}
+
+.tournament-stats-cards div {
+    background: #f7fafc;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+}
+
+.tournament-stats-cards strong,
+.tournament-stats-cards span {
+    display: block;
+}
+
+.tournament-stats-cards strong {
+    color: #667eea;
+    font-size: 1.4em;
+}
+
+.tournament-stats-cards span {
+    color: #666;
+    font-size: 13px;
+    margin-top: 4px;
+}
+
+.stats-table-wrapper {
+    overflow-x: auto;
+}
+
+.stats-table {
+    min-width: 600px;
 }
 
 .league-summary-layout {
