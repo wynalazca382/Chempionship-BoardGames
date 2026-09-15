@@ -463,6 +463,21 @@ button:active {
     font-weight: 700;
 }
 
+.consolation-awards {
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 2px solid #e0e0e0;
+}
+
+.stat-card-consolation {
+    background: #fff7ed;
+    border-color: #fed7aa;
+}
+
+.stat-card-consolation .stat-card-value {
+    color: #c2410c;
+}
+
 .round-details-section {
     margin-top: 8px;
 }

@@ -272,7 +272,6 @@ function renderAdditionalStats(entries, rounds) {
     const cards = [
         { source: topBy(entries, 'wins'), key: 'wins', icon: '🥇', label: 'Najwięcej zwycięstw stołów', format: v => `${v}x` },
         { source: topBy(entries, 'high'), key: 'high', icon: '💯', label: 'Najwyższy wynik w rozgrywce', format: v => `${v} pkt` },
-        { source: topBy(entries, 'highNorm'), key: 'highNorm', icon: '📈', label: 'Najlepszy wynik względny', format: v => `${v}%` },
         { source: topBy(byAvgTp, 'avgTp'), key: 'avgTp', icon: '⚡', label: 'Najlepsza średnia PT/rundę', format: v => v.toFixed(2) },
         { source: topBy(entries, 'tbs'), key: 'tbs', icon: '🎯', label: 'Król dogrywek (suma TB)', format: v => v }
     ].filter(card => card.source && card.source[card.key] > 0);
@@ -289,6 +288,105 @@ function renderAdditionalStats(entries, rounds) {
                         <span class="stat-card-label">${card.label}</span>
                         <strong class="stat-card-name">${card.source.name}</strong>
                         <span class="stat-card-value">${card.format(card.source[card.key])}</span>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function computePlacesByPlayer(rounds) {
+    const places = {};
+    (rounds || []).forEach(round => {
+        if (!round || !Array.isArray(round.tables)) return;
+        round.tables.forEach(table => {
+            (table.players || []).forEach(player => {
+                const place = round.places?.[player];
+                if (place === undefined) return;
+                if (!places[player]) places[player] = [];
+                places[player].push(place);
+            });
+        });
+    });
+    return places;
+}
+
+function computeOpponentsByPlayer(rounds) {
+    const opponents = {};
+    (rounds || []).forEach(round => {
+        if (!round || !Array.isArray(round.tables)) return;
+        round.tables.forEach(table => {
+            const players = table.players || [];
+            players.forEach(player => {
+                if (!opponents[player]) opponents[player] = new Set();
+                players.forEach(other => {
+                    if (other !== player) opponents[player].add(other);
+                });
+            });
+        });
+    });
+    return opponents;
+}
+
+function standardDeviation(values) {
+    if (!values || values.length < 2) return null;
+    const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+    const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
+    return Math.sqrt(variance);
+}
+
+function renderConsolationAwards(entries, rounds) {
+    if (!entries || entries.length < 2) return '';
+
+    const placesByPlayer = computePlacesByPlayer(rounds);
+    const opponentsByPlayer = computeOpponentsByPlayer(rounds);
+
+    const withMultipleRounds = entries
+        .map(entry => ({ entry, places: placesByPlayer[entry.name] || [] }))
+        .filter(item => item.places.length >= 2);
+
+    const pickBest = (list, scoreFn, better) => list.reduce((best, item) => {
+        const score = scoreFn(item);
+        if (score === null || score === undefined) return best;
+        if (!best || better(score, best.score)) return { item, score };
+        return best;
+    }, null);
+
+    const rollercoaster = pickBest(withMultipleRounds, i => Math.max(...i.places) - Math.min(...i.places), (a, b) => a > b);
+    const comeback = pickBest(withMultipleRounds, i => i.places[0] - i.places[i.places.length - 1], (a, b) => a > b);
+    const steady = pickBest(withMultipleRounds, i => standardDeviation(i.places), (a, b) => a < b);
+    const social = pickBest(entries.map(entry => ({ entry, count: opponentsByPlayer[entry.name] ? opponentsByPlayer[entry.name].size : 0 })), i => i.count, (a, b) => a > b);
+    const lastPlace = entries[entries.length - 1];
+
+    const cards = [];
+    if (rollercoaster && rollercoaster.score > 0) {
+        cards.push({ icon: '🎢', label: 'Rollercoaster turnieju', name: rollercoaster.item.entry.name, value: `rozstęp ${rollercoaster.score} miejsc` });
+    }
+    if (comeback && comeback.score > 0) {
+        cards.push({ icon: '📈', label: 'Najlepszy comeback', name: comeback.item.entry.name, value: `+${comeback.score} miejsc od 1. rundy` });
+    }
+    if (steady) {
+        cards.push({ icon: '🧊', label: 'Żelazny nerw (najbardziej stabilny)', name: steady.item.entry.name, value: `odch. std. ${steady.score.toFixed(2)}` });
+    }
+    if (social && social.score > 0) {
+        cards.push({ icon: '🎁', label: 'Dusza towarzystwa', name: social.item.entry.name, value: `${social.score} różnych przeciwników` });
+    }
+    if (lastPlace) {
+        cards.push({ icon: '🎗️', label: 'Nagroda pocieszenia', name: lastPlace.name, value: 'Za wytrwałość do samego końca!' });
+    }
+
+    if (cards.length === 0) return '';
+
+    return `
+        <div class="consolation-awards">
+            <h3 style="color: #764ba2; margin-bottom: 14px;">🎉 Nagrody pocieszenia i ciekawostki</h3>
+            <div class="additional-stats-cards">
+                ${cards.map(card => `
+                    <div class="stat-card stat-card-consolation">
+                        <span class="stat-card-icon">${card.icon}</span>
+                        <span class="stat-card-label">${card.label}</span>
+                        <strong class="stat-card-name">${card.name}</strong>
+                        <span class="stat-card-value">${card.value}</span>
                     </div>
                 `).join('')}
             </div>
@@ -359,8 +457,6 @@ function renderTournamentStats(rounds) {
     const tableCount = validRounds.reduce((total, round) => total + round.tables.length, 0);
     const gamePoints = validRounds.reduce((total, round) => total + Object.values(round.scores || {}).reduce((sum, score) => sum + (Number(score) || 0), 0), 0);
     const tournamentPoints = validRounds.reduce((total, round) => total + Object.values(round.tournamentPoints || {}).reduce((sum, score) => sum + (Number(score) || 0), 0), 0);
-    const wins = validRounds.reduce((total, round) => total + Object.values(round.places || {}).filter(place => Number(place) === 1).length, 0);
-    const highestScore = validRounds.reduce((highest, round) => Math.max(highest, ...Object.values(round.scores || {}).map(score => Number(score) || 0)), 0);
     const playedPlayerCount = validRounds.reduce((total, round) => total + new Set(round.tables.flatMap(table => table.players || [])).size, 0);
     const averageGamePoints = playedPlayerCount ? (gamePoints / playedPlayerCount).toFixed(1) : '0.0';
     const averageTournamentPoints = playedPlayerCount ? (tournamentPoints / playedPlayerCount).toFixed(1) : '0.0';
@@ -387,8 +483,6 @@ function renderTournamentStats(rounds) {
                 <div><strong>${gamePoints}</strong><span>Pkt gry łącznie</span></div>
                 <div><strong>${averageGamePoints}</strong><span>Śr. pkt gry</span></div>
                 <div><strong>${averageTournamentPoints}</strong><span>Śr. PT</span></div>
-                <div><strong>${wins}</strong><span>Wygrane stoły</span></div>
-                <div><strong>${highestScore}</strong><span>Najwyższy wynik</span></div>
             </div>
             <div class="stats-table-wrapper">
                 <table class="summary-table stats-table">
@@ -401,9 +495,8 @@ function renderTournamentStats(rounds) {
 }
 
 function renderSummaryBlock(title, subtitle, entries, rounds) {
-    return `
-        <h3 style="color: #764ba2; margin-bottom: 12px;">${title}</h3>
-        ${subtitle ? `<p style="margin-bottom: 16px; color: #666;">${subtitle}</p>` : ''}
+    const rankingTable = `
+        <h3 style="color: #764ba2; margin: 28px 0 12px; padding-top: 20px; border-top: 2px solid #e0e0e0;">🏆 Ranking końcowy</h3>
         <table class="summary-table">
             <thead><tr><th>#</th><th>Gracz</th><th>PT</th><th>W</th><th>Pkt Gry</th><th>Wynik znorm.</th><th>Suma TB</th></tr></thead>
             <tbody>
@@ -412,8 +505,15 @@ function renderSummaryBlock(title, subtitle, entries, rounds) {
                 </tr>`).join('')}
             </tbody>
         </table>
+    `;
+
+    return `
+        <h3 style="color: #764ba2; margin-bottom: 12px;">${title}</h3>
+        ${subtitle ? `<p style="margin-bottom: 16px; color: #666;">${subtitle}</p>` : ''}
         ${renderTournamentStats(rounds)}
         ${renderAdditionalStats(entries, rounds)}
+        ${renderConsolationAwards(entries, rounds)}
+        ${rankingTable}
     `;
 }
 
