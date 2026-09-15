@@ -258,8 +258,8 @@ function computeRoundsPlayedByPlayer(rounds) {
     return counts;
 }
 
-function renderAdditionalStats(entries, rounds) {
-    if (!entries || entries.length === 0) return '';
+function buildAdditionalStatsCards(entries, rounds) {
+    if (!entries || entries.length === 0) return [];
 
     const roundsPlayed = computeRoundsPlayedByPlayer(rounds);
     const byAvgTp = entries.map(entry => ({
@@ -269,30 +269,14 @@ function renderAdditionalStats(entries, rounds) {
 
     const topBy = (list, key) => list.reduce((best, entry) => (!best || entry[key] > best[key] ? entry : best), null);
 
-    const cards = [
+    return [
         { source: topBy(entries, 'wins'), key: 'wins', icon: '🥇', label: 'Najwięcej zwycięstw stołów', format: v => `${v}x` },
         { source: topBy(entries, 'high'), key: 'high', icon: '💯', label: 'Najwyższy wynik w rozgrywce', format: v => `${v} pkt` },
         { source: topBy(byAvgTp, 'avgTp'), key: 'avgTp', icon: '⚡', label: 'Najlepsza średnia PT/rundę', format: v => v.toFixed(2) },
-        { source: topBy(entries, 'tbs'), key: 'tbs', icon: '🎯', label: 'Król dogrywek (suma TB)', format: v => v }
-    ].filter(card => card.source && card.source[card.key] > 0);
-
-    if (cards.length === 0) return '';
-
-    return `
-        <div class="additional-stats">
-            <h3 style="color: #764ba2; margin-bottom: 14px;">Statystyki dodatkowe</h3>
-            <div class="additional-stats-cards">
-                ${cards.map(card => `
-                    <div class="stat-card">
-                        <span class="stat-card-icon">${card.icon}</span>
-                        <span class="stat-card-label">${card.label}</span>
-                        <strong class="stat-card-name">${card.source.name}</strong>
-                        <span class="stat-card-value">${card.format(card.source[card.key])}</span>
-                    </div>
-                `).join('')}
-            </div>
-        </div>
-    `;
+        { source: topBy(entries, 'tbs'), key: 'tbs', icon: '👑', label: 'Król dogrywek (suma TB)', format: v => v }
+    ]
+        .filter(card => card.source && card.source[card.key] > 0)
+        .map(card => ({ icon: card.icon, label: card.label, name: card.source.name, value: card.format(card.source[card.key]) }));
 }
 
 function computePlacesByPlayer(rounds) {
@@ -528,8 +512,27 @@ function computeTopRivalry(rounds) {
     return Object.values(pairs).reduce((best, pair) => (!best || pair.count > best.count ? pair : best), null);
 }
 
-function renderConsolationAwards(entries, rounds) {
-    if (!entries || entries.length < 2) return '';
+// Najwyższy surowy wynik gry osiągnięty w ostatniej rozegranej rundzie turnieju.
+function computeFinalRoundTopScore(rounds) {
+    const validRounds = (rounds || []).filter(round => round && Array.isArray(round.tables) && round.tables.length > 0);
+    const lastRound = validRounds[validRounds.length - 1];
+    if (!lastRound) return null;
+
+    let best = null;
+    lastRound.tables.forEach(table => {
+        (table.players || []).forEach(player => {
+            const score = lastRound.scores?.[player];
+            if (score === undefined) return;
+            if (!best || score > best.score) {
+                best = { player, score };
+            }
+        });
+    });
+    return best;
+}
+
+function buildSpecialAwardCards(entries, rounds) {
+    if (!entries || entries.length < 2) return [];
 
     const placesByPlayer = computePlacesByPlayer(rounds);
     const opponentsByPlayer = computeOpponentsByPlayer(rounds);
@@ -555,7 +558,9 @@ function renderConsolationAwards(entries, rounds) {
     const steady = pickBest(withAtLeastThreeRounds, i => standardDeviation(i.places), (a, b) => a < b);
     const decline = pickBest(withMultipleRounds, i => i.places[i.places.length - 1] - i.places[0], (a, b) => a > b);
     const social = pickBest(entries.map(entry => ({ entry, count: opponentsByPlayer[entry.name] ? opponentsByPlayer[entry.name].size : 0 })), i => i.count, (a, b) => a > b);
-    const runnerUp = pickBest(entries.map(entry => ({ entry, count: placeCounts[entry.name]?.[2] || 0 })), i => i.count, (a, b) => a > b);
+    // Podobnie jak przy stabilności: "wieczny" wicelider musi to udowodnić na co
+    // najmniej 3 rundach, inaczej przy typowych 2 rundach 2x 2. miejsce to reguła, nie wyjątek.
+    const runnerUp = pickBest(withAtLeastThreeRounds.map(item => ({ entry: item.entry, count: placeCounts[item.entry.name]?.[2] || 0 })), i => i.count, (a, b) => a > b);
     const lucky = pickBest(entries.map(entry => ({ entry, count: tiebreakWins[entry.name] || 0 })), i => i.count, (a, b) => a > b);
 
     const { biggest: blowout, closest: photoFinish, qualifyingTables } = computeScoreGapExtremes(rounds);
@@ -565,14 +570,39 @@ function renderConsolationAwards(entries, rounds) {
     const rivalry = computeTopRivalry(rounds);
     const humblestWin = computeHumblestWin(rounds);
     const tpByPlayer = computeTournamentPointsByPlayer(rounds);
+    // Min. 3 rundy z tego samego powodu co wyżej - "passa" z 2/2 nic nie znaczy.
     const perfectStreak = pickBest(
         entries
             .map(entry => ({ entry, tps: tpByPlayer[entry.name] || [] }))
-            .filter(item => item.tps.length >= 2 && item.tps.every(tp => tp > 0)),
+            .filter(item => item.tps.length >= 3 && item.tps.every(tp => tp > 0)),
         i => i.tps.length,
         (a, b) => a > b
     );
     const runnerUpPerformance = computeBestRunnerUpPerformance(rounds);
+
+    // Największy skok w górę w jednej, pojedynczej rundzie (np. z 4. na 1. miejsce
+    // między dwiema kolejnymi rundami) - konkretniejsze niż ogólny "comeback".
+    const bigJumpCandidates = withMultipleRounds.map(item => {
+        let best = null;
+        for (let i = 1; i < item.places.length; i++) {
+            const jump = item.places[i - 1] - item.places[i];
+            if (jump > 0 && (!best || jump > best.jump)) {
+                best = { jump, fromPlace: item.places[i - 1], toPlace: item.places[i] };
+            }
+        }
+        return best ? { ...item, ...best } : null;
+    }).filter(Boolean);
+    const bigJump = pickBest(bigJumpCandidates, item => item.jump, (a, b) => a > b);
+
+    // Gracz, który wygrywał dosłownie każdą rozegraną rundę - min. 3 rundy, żeby
+    // przy typowych 2 rundach nie pokrywało się to trywialnie ze zwycięzcą turnieju.
+    const wireToWire = pickBest(
+        withAtLeastThreeRounds.filter(item => item.places.every(place => place === 1)),
+        item => item.places.length,
+        (a, b) => a > b
+    );
+
+    const finalRoundBlast = computeFinalRoundTopScore(rounds);
 
     const cards = [];
     if (rollercoaster && rollercoaster.score > 0) {
@@ -617,14 +647,38 @@ function renderConsolationAwards(entries, rounds) {
     if (runnerUpPerformance && runnerUpPerformance.norm >= 80) {
         cards.push({ icon: '🎯', label: 'Prawie było', name: runnerUpPerformance.player, value: `${runnerUpPerformance.norm}% wyniku zwycięzcy, a jednak przegrał(a) (runda ${runnerUpPerformance.roundIndex + 1})` });
     }
+    if (bigJump) {
+        cards.push({ icon: '🔄', label: 'Błyskawiczny zwrot akcji', name: bigJump.item.entry.name, value: `z ${bigJump.item.fromPlace}. na ${bigJump.item.toPlace}. miejsce w jednej rundzie` });
+    }
+    if (wireToWire) {
+        cards.push({ icon: '🐐', label: 'Zawsze na czele', name: wireToWire.item.entry.name, value: `${wireToWire.score}/${wireToWire.score} rund wygranych` });
+    }
+    if (finalRoundBlast) {
+        cards.push({ icon: '🧨', label: 'Wybuchowy finisz', name: finalRoundBlast.player, value: `${finalRoundBlast.score} pkt w ostatniej rundzie - najwięcej ze wszystkich!` });
+    }
 
-    if (cards.length === 0) return '';
+    return cards;
+}
+
+function renderStatsAndAwards(entries, rounds) {
+    const statCards = buildAdditionalStatsCards(entries, rounds);
+    const awardCards = buildSpecialAwardCards(entries, rounds);
+
+    if (statCards.length === 0 && awardCards.length === 0) return '';
 
     return `
         <div class="consolation-awards">
-            <h3 style="color: #764ba2; margin-bottom: 14px;">🎉 Nagrody specjalne i ciekawostki</h3>
+            <h3 style="color: #764ba2; margin-bottom: 14px;">🎉 Ciekawostki i nagrody specjalne</h3>
             <div class="additional-stats-cards">
-                ${cards.map(card => `
+                ${statCards.map(card => `
+                    <div class="stat-card">
+                        <span class="stat-card-icon">${card.icon}</span>
+                        <span class="stat-card-label">${card.label}</span>
+                        <strong class="stat-card-name">${card.name}</strong>
+                        <span class="stat-card-value">${card.value}</span>
+                    </div>
+                `).join('')}
+                ${awardCards.map(card => `
                     <div class="stat-card stat-card-consolation">
                         <span class="stat-card-icon">${card.icon}</span>
                         <span class="stat-card-label">${card.label}</span>
@@ -754,8 +808,7 @@ function renderSummaryBlock(title, subtitle, entries, rounds) {
         ${title ? `<h3 style="color: #764ba2; margin-bottom: 12px;">${title}</h3>` : ''}
         ${subtitle ? `<p style="margin-bottom: 16px; color: #666;">${subtitle}</p>` : ''}
         ${renderTournamentStats(rounds)}
-        ${renderAdditionalStats(entries, rounds)}
-        ${renderConsolationAwards(entries, rounds)}
+        ${renderStatsAndAwards(entries, rounds)}
         ${rankingTable}
     `;
 }

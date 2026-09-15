@@ -427,28 +427,11 @@ button:active {
     min-width: 600px;
 }
 
-.additional-stats {
-    margin-top: 28px;
-    padding-top: 20px;
-    border-top: 2px solid #e0e0e0;
-}
-
 .additional-stats-cards {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     gap: 10px;
-}
-
-@media (max-width: 720px) {
-    .additional-stats-cards {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
-
-@media (max-width: 420px) {
-    .additional-stats-cards {
-        grid-template-columns: 1fr;
-    }
 }
 
 .stat-card {
@@ -460,6 +443,19 @@ button:active {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    flex: 0 1 calc(33.333% - 10px);
+}
+
+@media (max-width: 720px) {
+    .stat-card {
+        flex-basis: calc(50% - 10px);
+    }
+}
+
+@media (max-width: 420px) {
+    .stat-card {
+        flex-basis: 100%;
+    }
 }
 
 .stat-card-icon {
