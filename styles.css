@@ -385,8 +385,14 @@ button:active {
 
 .tournament-stats-cards {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    grid-template-columns: repeat(3, 1fr);
     gap: 10px;
+}
+
+@media (max-width: 560px) {
+    .tournament-stats-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 .tournament-stats-cards div {
@@ -429,8 +435,20 @@ button:active {
 
 .additional-stats-cards {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    grid-template-columns: repeat(4, 1fr);
     gap: 10px;
+}
+
+@media (max-width: 720px) {
+    .additional-stats-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 420px) {
+    .additional-stats-cards {
+        grid-template-columns: 1fr;
+    }
 }
 
 .stat-card {

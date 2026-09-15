@@ -609,7 +609,7 @@ function renderConsolationAwards(entries, rounds) {
         cards.push({ icon: '📸', label: 'Fotograficzny finisz', name: photoFinish.player, value: `${photoFinish.gap} pkt przewagi nad ${photoFinish.opponent} (runda ${photoFinish.roundIndex + 1})` });
     }
     if (humblestWin) {
-        cards.push({ icon: '🫡', label: 'Najskromniejsze zwycięstwo', name: humblestWin.player, value: `wygrana z ${humblestWin.score} pkt (runda ${humblestWin.roundIndex + 1})` });
+        cards.push({ icon: '😅', label: 'Najskromniejsze zwycięstwo', name: humblestWin.player, value: `wygrana z ${humblestWin.score} pkt (runda ${humblestWin.roundIndex + 1})` });
     }
     if (perfectStreak) {
         cards.push({ icon: '🏅', label: 'Perfekcyjna passa', name: perfectStreak.item.entry.name, value: `${perfectStreak.score}/${perfectStreak.score} rund z punktami` });
@@ -722,7 +722,7 @@ function renderTournamentStats(rounds) {
             <div class="tournament-stats-cards">
                 <div><strong>${tournament.players.length}</strong><span>Graczy</span></div>
                 <div><strong>${validRounds.length}</strong><span>Rund</span></div>
-                <div><strong>${tableCount}</strong><span>Stołów</span></div>
+                <div><strong>${tableCount}</strong><span>Rozegranych partii</span></div>
                 <div><strong>${gamePoints}</strong><span>Pkt gry łącznie</span></div>
                 <div><strong>${averageGamePoints}</strong><span>Śr. pkt gry</span></div>
                 <div><strong>${averageTournamentPoints}</strong><span>Śr. PT</span></div>
@@ -751,7 +751,7 @@ function renderSummaryBlock(title, subtitle, entries, rounds) {
     `;
 
     return `
-        <h3 style="color: #764ba2; margin-bottom: 12px;">${title}</h3>
+        ${title ? `<h3 style="color: #764ba2; margin-bottom: 12px;">${title}</h3>` : ''}
         ${subtitle ? `<p style="margin-bottom: 16px; color: #666;">${subtitle}</p>` : ''}
         ${renderTournamentStats(rounds)}
         ${renderAdditionalStats(entries, rounds)}
@@ -1839,7 +1839,7 @@ function displaySummary() {
         totalTieBreakersByIndex: tournament.totalTieBreakersByIndex
     });
 
-    summaryDisplay.innerHTML = renderSummaryBlock('🏆 Podsumowanie Turnieju', 'Ranking końcowy turnieju.', entries, tournament.rounds);
+    summaryDisplay.innerHTML = renderSummaryBlock('', '', entries, tournament.rounds);
     summaryDisplay.innerHTML += renderRoundDetailsSection(tournament.rounds, 'Szczegóły rozgrywek');
     if (summaryActions) {
         summaryActions.innerHTML = '<button onclick="printTournament()" class="btn-tertiary">🖨️ Drukuj</button><button onclick="resetTournament()" class="btn-secondary">Nowy Turniej</button>';
