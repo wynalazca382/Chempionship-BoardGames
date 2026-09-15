@@ -421,6 +421,65 @@ button:active {
     min-width: 600px;
 }
 
+.additional-stats {
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 2px solid #e0e0e0;
+}
+
+.additional-stats-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 10px;
+}
+
+.stat-card {
+    background: #f0f4ff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.stat-card-icon {
+    font-size: 1.6em;
+}
+
+.stat-card-label {
+    color: #666;
+    font-size: 12px;
+}
+
+.stat-card-name {
+    color: #764ba2;
+    font-size: 1.1em;
+}
+
+.stat-card-value {
+    color: #667eea;
+    font-weight: 700;
+}
+
+.round-details-section {
+    margin-top: 8px;
+}
+
+.round-details-block {
+    margin-bottom: 20px;
+}
+
+.round-details-block h4 {
+    color: #667eea;
+    margin-bottom: 8px;
+}
+
+.round-details-table {
+    min-width: 560px;
+}
+
 .league-summary-layout {
     display: grid;
     grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);

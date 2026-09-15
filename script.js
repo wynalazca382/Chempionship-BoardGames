@@ -246,6 +246,114 @@ function buildSummaryEntries(summarySource, roundsForH2H) {
     );
 }
 
+function computeRoundsPlayedByPlayer(rounds) {
+    const counts = {};
+    (rounds || []).forEach(round => {
+        if (!round || !Array.isArray(round.tables)) return;
+        const playersInRound = new Set(round.tables.flatMap(table => table.players || []));
+        playersInRound.forEach(player => {
+            counts[player] = (counts[player] || 0) + 1;
+        });
+    });
+    return counts;
+}
+
+function renderAdditionalStats(entries, rounds) {
+    if (!entries || entries.length === 0) return '';
+
+    const roundsPlayed = computeRoundsPlayedByPlayer(rounds);
+    const byAvgTp = entries.map(entry => ({
+        ...entry,
+        avgTp: entry.tp / (roundsPlayed[entry.name] || 1)
+    }));
+
+    const topBy = (list, key) => list.reduce((best, entry) => (!best || entry[key] > best[key] ? entry : best), null);
+
+    const cards = [
+        { source: topBy(entries, 'wins'), key: 'wins', icon: '🥇', label: 'Najwięcej zwycięstw stołów', format: v => `${v}x` },
+        { source: topBy(entries, 'high'), key: 'high', icon: '💯', label: 'Najwyższy wynik w rozgrywce', format: v => `${v} pkt` },
+        { source: topBy(entries, 'highNorm'), key: 'highNorm', icon: '📈', label: 'Najlepszy wynik względny', format: v => `${v}%` },
+        { source: topBy(byAvgTp, 'avgTp'), key: 'avgTp', icon: '⚡', label: 'Najlepsza średnia PT/rundę', format: v => v.toFixed(2) },
+        { source: topBy(entries, 'tbs'), key: 'tbs', icon: '🎯', label: 'Król dogrywek (suma TB)', format: v => v }
+    ].filter(card => card.source && card.source[card.key] > 0);
+
+    if (cards.length === 0) return '';
+
+    return `
+        <div class="additional-stats">
+            <h3 style="color: #764ba2; margin-bottom: 14px;">Statystyki dodatkowe</h3>
+            <div class="additional-stats-cards">
+                ${cards.map(card => `
+                    <div class="stat-card">
+                        <span class="stat-card-icon">${card.icon}</span>
+                        <span class="stat-card-label">${card.label}</span>
+                        <strong class="stat-card-name">${card.source.name}</strong>
+                        <span class="stat-card-value">${card.format(card.source[card.key])}</span>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function renderRoundDetailsTable(round, roundLabel) {
+    if (!round || !Array.isArray(round.tables)) return '';
+
+    const rows = round.tables.map(table => {
+        if (!table.players || table.players.length === 0) return '';
+        const sortedPlayers = [...table.players].sort((a, b) => (round.places?.[a] ?? 99) - (round.places?.[b] ?? 99));
+        return sortedPlayers.map(player => {
+            const place = round.places?.[player];
+            const score = round.scores?.[player] ?? 0;
+            const tp = round.tournamentPoints?.[player] ?? 0;
+            const tbs = normalizeTieBreakers(round.tieBreakers?.[player]);
+            return `<tr>
+                <td>Stół ${table.tableNumber}</td>
+                <td>${player}</td>
+                <td>${place ? place + '.' : '-'}</td>
+                <td>${score}</td>
+                <td>${tbs.join(' / ')}</td>
+                <td>${tp}</td>
+            </tr>`;
+        }).join('');
+    }).join('');
+
+    if (!rows) return '';
+
+    return `
+        <div class="round-details-block">
+            <h4>${roundLabel}</h4>
+            <div class="stats-table-wrapper">
+                <table class="summary-table round-details-table">
+                    <thead><tr><th>Stół</th><th>Gracz</th><th>Miejsce</th><th>Pkt gry</th><th>TB</th><th>Pkt turniejowe</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+function renderRoundDetailsSection(rounds, sectionTitle) {
+    const validRounds = (rounds || []).filter(round => round && Array.isArray(round.tables) && round.tables.length > 0);
+    if (validRounds.length === 0) return '';
+
+    const blocks = validRounds.map((round, index) => renderRoundDetailsTable(round, `Runda ${index + 1}`)).join('');
+    if (!blocks) return '';
+
+    return `
+        <div class="round-details-section">
+            <h3 style="color: #764ba2; margin: 28px 0 14px; padding-top: 20px; border-top: 2px solid #e0e0e0;">${sectionTitle}</h3>
+            ${blocks}
+        </div>
+    `;
+}
+
+function renderLeagueRoundDetails() {
+    return (tournament.league?.weekSummaries || []).map((weekSummary, index) =>
+        renderRoundDetailsSection(weekSummary.rounds, `Szczegóły rozgrywek - Tydzień ${index + 1}`)
+    ).join('');
+}
+
 function renderTournamentStats(rounds) {
     const validRounds = (rounds || []).filter(round => round && Array.isArray(round.tables));
     const tableCount = validRounds.reduce((total, round) => total + round.tables.length, 0);
@@ -305,6 +413,7 @@ function renderSummaryBlock(title, subtitle, entries, rounds) {
             </tbody>
         </table>
         ${renderTournamentStats(rounds)}
+        ${renderAdditionalStats(entries, rounds)}
     `;
 }
 
@@ -1341,6 +1450,7 @@ function displaySummary() {
             entries,
             weekSummary.rounds || tournament.rounds
         );
+        summaryDisplay.innerHTML += renderRoundDetailsSection(weekSummary.rounds || tournament.rounds, `Szczegóły rozgrywek - Tydzień ${tournament.league.currentWeek + 1}`);
         summaryDisplay.innerHTML += renderLeagueHistory();
         if (summaryActions) {
             summaryActions.innerHTML = `<button onclick="printTournament()" class="btn-tertiary">🖨️ Drukuj</button>
@@ -1365,6 +1475,7 @@ function displaySummary() {
                 ${renderLeagueBalanceBlock(aggregate, leagueRounds)}
             </div>
             ${renderLeagueHistory()}
+            ${renderLeagueRoundDetails()}
         `;
         if (summaryActions) {
             summaryActions.innerHTML = `<button onclick="printTournament()" class="btn-tertiary">🖨️ Drukuj</button>
@@ -1386,6 +1497,7 @@ function displaySummary() {
     });
 
     summaryDisplay.innerHTML = renderSummaryBlock('🏆 Podsumowanie Turnieju', 'Ranking końcowy turnieju.', entries, tournament.rounds);
+    summaryDisplay.innerHTML += renderRoundDetailsSection(tournament.rounds, 'Szczegóły rozgrywek');
     if (summaryActions) {
         summaryActions.innerHTML = '<button onclick="printTournament()" class="btn-tertiary">🖨️ Drukuj</button><button onclick="resetTournament()" class="btn-secondary">Nowy Turniej</button>';
     }
@@ -1407,15 +1519,20 @@ function generatePrintableContent() {
     const date = new Date().toLocaleDateString('pl-PL');
     
     let summaryHtml = '';
+    let roundDetailsHtml = '';
     if (isLeagueMode() && tournament.league.phase === 'weekly-summary') {
         const weekSummary = tournament.league.weekSummaries[tournament.league.currentWeek] || captureCurrentWeekSummary();
         const entries = buildSummaryEntries(weekSummary, weekSummary.rounds || tournament.rounds);
         summaryHtml = renderPrintSummaryTable(entries);
+        roundDetailsHtml = renderPrintRoundDetails(weekSummary.rounds || tournament.rounds, `Szczegóły rozgrywek - Tydzień ${tournament.league.currentWeek + 1}`);
     } else if (isLeagueMode() && tournament.league.phase === 'final-summary') {
         const aggregate = buildLeagueAggregateSummary();
         const leagueRounds = (tournament.league?.weekSummaries || []).flatMap(w => w.rounds || []);
         const entries = buildSummaryEntries(aggregate, leagueRounds);
         summaryHtml = renderPrintSummaryTable(entries);
+        roundDetailsHtml = (tournament.league?.weekSummaries || []).map((weekSummary, index) =>
+            renderPrintRoundDetails(weekSummary.rounds, `Szczegóły rozgrywek - Tydzień ${index + 1}`)
+        ).join('');
     } else {
         const entries = buildSummaryEntries({
             totalTournamentPoints: tournament.totalTournamentPoints,
@@ -1428,8 +1545,9 @@ function generatePrintableContent() {
             totalTieBreakersByIndex: tournament.totalTieBreakersByIndex
         });
         summaryHtml = renderPrintSummaryTable(entries);
+        roundDetailsHtml = renderPrintRoundDetails(tournament.rounds, 'Szczegóły rozgrywek');
     }
-    
+
     return `
         <!DOCTYPE html>
         <html>
@@ -1456,6 +1574,7 @@ function generatePrintableContent() {
             <h2>${subtitle}</h2>
             <p class="meta">Data: ${date} | Liczba graczy: ${tournament.players.length} | Rund: ${tournament.totalRounds}</p>
             ${summaryHtml}
+            ${roundDetailsHtml}
             <p style="margin-top: 30px; font-size: 11px; color: #999;">Wydrukowano z ChemPionship Board Games Tournament Manager</p>
         </body>
         </html>
@@ -1473,6 +1592,31 @@ function renderPrintSummaryTable(entries) {
     });
     html += '</tbody></table>';
     return html;
+}
+
+function renderPrintRoundDetails(rounds, sectionTitle) {
+    const validRounds = (rounds || []).filter(round => round && Array.isArray(round.tables) && round.tables.length > 0);
+    if (validRounds.length === 0) return '';
+
+    const roundTables = validRounds.map((round, index) => {
+        const rows = round.tables.map(table => {
+            if (!table.players || table.players.length === 0) return '';
+            const sortedPlayers = [...table.players].sort((a, b) => (round.places?.[a] ?? 99) - (round.places?.[b] ?? 99));
+            return sortedPlayers.map(player => {
+                const place = round.places?.[player];
+                const score = round.scores?.[player] ?? 0;
+                const tp = round.tournamentPoints?.[player] ?? 0;
+                const tbs = normalizeTieBreakers(round.tieBreakers?.[player]);
+                return `<tr><td>Stół ${table.tableNumber}</td><td>${player}</td><td>${place ? place + '.' : '-'}</td><td>${score}</td><td>${tbs.join(' / ')}</td><td>${tp}</td></tr>`;
+            }).join('');
+        }).join('');
+        if (!rows) return '';
+        return `<h2>Runda ${index + 1}</h2><table><thead><tr><th>Stół</th><th>Gracz</th><th>Miejsce</th><th>Pkt gry</th><th>TB</th><th>Pkt turniejowe</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }).join('');
+
+    if (!roundTables) return '';
+
+    return `<h1 style="font-size: 20px; margin-top: 20px;">${sectionTitle}</h1>${roundTables}`;
 }
 
 function resetTournament() {
