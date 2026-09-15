@@ -335,15 +335,213 @@ function standardDeviation(values) {
     return Math.sqrt(variance);
 }
 
+function computePlaceCounts(rounds) {
+    const counts = {};
+    (rounds || []).forEach(round => {
+        if (!round || !Array.isArray(round.tables)) return;
+        round.tables.forEach(table => {
+            (table.players || []).forEach(player => {
+                const place = round.places?.[player];
+                if (place === undefined) return;
+                if (!counts[player]) counts[player] = {};
+                counts[player][place] = (counts[player][place] || 0) + 1;
+            });
+        });
+    });
+    return counts;
+}
+
+// Zlicza rundy, w których gracz miał remis punktowy z kimś przy stole i wygrał
+// go dzięki tie-breakom (czyli zajął lepsze miejsce niż pozostali remisujący).
+function computeTiebreakWinCounts(rounds) {
+    const counts = {};
+    (rounds || []).forEach(round => {
+        if (!round || !Array.isArray(round.tables)) return;
+        round.tables.forEach(table => {
+            const byScore = {};
+            (table.players || []).forEach(player => {
+                const score = round.scores?.[player];
+                if (score === undefined) return;
+                if (!byScore[score]) byScore[score] = [];
+                byScore[score].push(player);
+            });
+
+            Object.values(byScore).forEach(group => {
+                if (group.length < 2) return;
+                const withPlaces = group
+                    .map(player => ({ player, place: round.places?.[player] }))
+                    .filter(entry => entry.place !== undefined);
+                if (withPlaces.length < 2) return;
+
+                const bestPlace = Math.min(...withPlaces.map(entry => entry.place));
+                withPlaces.forEach(entry => {
+                    if (entry.place === bestPlace) {
+                        counts[entry.player] = (counts[entry.player] || 0) + 1;
+                    }
+                });
+            });
+        });
+    });
+    return counts;
+}
+
+// Największa przewaga punktowa zwycięzcy stołu nad 2. miejscem w pojedynczej rundzie.
+// Przegląda wszystkie stoły i wyłuskuje skrajności przewagi 1. nad 2. miejscem:
+// największą (Zmiażdżenie stołu) i najmniejszą (Fotograficzny finisz).
+function computeScoreGapExtremes(rounds) {
+    let biggest = null;
+    let closest = null;
+    let qualifyingTables = 0;
+
+    (rounds || []).forEach((round, roundIndex) => {
+        if (!round || !Array.isArray(round.tables)) return;
+        round.tables.forEach(table => {
+            const scored = (table.players || [])
+                .map(player => ({ player, score: round.scores?.[player], place: round.places?.[player] }))
+                .filter(entry => entry.score !== undefined && entry.place !== undefined)
+                .sort((a, b) => a.place - b.place);
+            if (scored.length < 2) return;
+
+            const gap = scored[0].score - scored[1].score;
+            if (gap <= 0) return;
+            qualifyingTables++;
+
+            if (!biggest || gap > biggest.gap) {
+                biggest = { player: scored[0].player, gap, roundIndex };
+            }
+            if (!closest || gap < closest.gap) {
+                closest = { player: scored[0].player, opponent: scored[1].player, gap, roundIndex };
+            }
+        });
+    });
+
+    return { biggest, closest, qualifyingTables };
+}
+
+// Najniższy wynik punktowy, z jakim ktokolwiek wygrał stół w całym turnieju.
+function computeHumblestWin(rounds) {
+    let humblest = null;
+    (rounds || []).forEach((round, roundIndex) => {
+        if (!round || !Array.isArray(round.tables)) return;
+        round.tables.forEach(table => {
+            const winner = (table.players || []).find(player => round.places?.[player] === 1);
+            if (!winner) return;
+            const score = round.scores?.[winner];
+            if (score === undefined) return;
+            if (!humblest || score < humblest.score) {
+                humblest = { player: winner, score, roundIndex };
+            }
+        });
+    });
+    return humblest;
+}
+
+function computeTournamentPointsByPlayer(rounds) {
+    const points = {};
+    (rounds || []).forEach(round => {
+        if (!round || !Array.isArray(round.tables)) return;
+        round.tables.forEach(table => {
+            (table.players || []).forEach(player => {
+                const tp = round.tournamentPoints?.[player];
+                if (tp === undefined) return;
+                if (!points[player]) points[player] = [];
+                points[player].push(tp);
+            });
+        });
+    });
+    return points;
+}
+
+// Najlepszy wynik znormalizowany (% wyniku zwycięzcy stołu) osiągnięty przez
+// kogoś, kto mimo to NIE zajął 1. miejsca - czyli był najbliżej wygranej.
+function computeBestRunnerUpPerformance(rounds) {
+    let best = null;
+    (rounds || []).forEach((round, roundIndex) => {
+        if (!round || !Array.isArray(round.tables)) return;
+        round.tables.forEach(table => {
+            (table.players || []).forEach(player => {
+                const place = round.places?.[player];
+                if (place === undefined || place === 1) return;
+                const norm = round.normalizedScores?.[player];
+                if (norm === undefined) return;
+                if (!best || norm > best.norm) {
+                    best = { player, norm, roundIndex };
+                }
+            });
+        });
+    });
+    return best;
+}
+
+// Zlicza, ile razy gracz spoza czołowej trójki końcowej pokonał przy wspólnym
+// stole kogoś, kto ostatecznie znalazł się w czołowej trójce.
+function computeGiantKillerCounts(rounds, topNames) {
+    const counts = {};
+    (rounds || []).forEach(round => {
+        if (!round || !Array.isArray(round.tables)) return;
+        round.tables.forEach(table => {
+            const players = table.players || [];
+            players.forEach(player => {
+                if (topNames.includes(player)) return;
+                const place = round.places?.[player];
+                if (place === undefined) return;
+
+                players.forEach(favourite => {
+                    if (favourite === player || !topNames.includes(favourite)) return;
+                    const favouritePlace = round.places?.[favourite];
+                    if (favouritePlace === undefined) return;
+                    if (place < favouritePlace) {
+                        counts[player] = (counts[player] || 0) + 1;
+                    }
+                });
+            });
+        });
+    });
+    return counts;
+}
+
+// Para graczy, która najczęściej siadała razem przy stole, wraz z bilansem
+// bezpośrednich starć (który z nich częściej kończył wyżej).
+function computeTopRivalry(rounds) {
+    const pairs = {};
+    (rounds || []).forEach(round => {
+        if (!round || !Array.isArray(round.tables)) return;
+        round.tables.forEach(table => {
+            const players = table.players || [];
+            for (let i = 0; i < players.length; i++) {
+                for (let j = i + 1; j < players.length; j++) {
+                    const [a, b] = [players[i], players[j]].sort();
+                    const key = `${a}|${b}`;
+                    if (!pairs[key]) pairs[key] = { a, b, count: 0, aWins: 0, bWins: 0 };
+                    pairs[key].count++;
+
+                    const placeA = round.places?.[a];
+                    const placeB = round.places?.[b];
+                    if (placeA !== undefined && placeB !== undefined) {
+                        if (placeA < placeB) pairs[key].aWins++;
+                        else if (placeB < placeA) pairs[key].bWins++;
+                    }
+                }
+            }
+        });
+    });
+    return Object.values(pairs).reduce((best, pair) => (!best || pair.count > best.count ? pair : best), null);
+}
+
 function renderConsolationAwards(entries, rounds) {
     if (!entries || entries.length < 2) return '';
 
     const placesByPlayer = computePlacesByPlayer(rounds);
     const opponentsByPlayer = computeOpponentsByPlayer(rounds);
+    const placeCounts = computePlaceCounts(rounds);
+    const tiebreakWins = computeTiebreakWinCounts(rounds);
 
     const withMultipleRounds = entries
         .map(entry => ({ entry, places: placesByPlayer[entry.name] || [] }))
         .filter(item => item.places.length >= 2);
+    // Stabilność liczymy dopiero od 3 rozegranych rund - przy 2 rundach identyczne
+    // miejsce w obu daje "idealną" stabilność zbyt łatwo, żeby cokolwiek znaczyć.
+    const withAtLeastThreeRounds = withMultipleRounds.filter(item => item.places.length >= 3);
 
     const pickBest = (list, scoreFn, better) => list.reduce((best, item) => {
         const score = scoreFn(item);
@@ -354,9 +552,27 @@ function renderConsolationAwards(entries, rounds) {
 
     const rollercoaster = pickBest(withMultipleRounds, i => Math.max(...i.places) - Math.min(...i.places), (a, b) => a > b);
     const comeback = pickBest(withMultipleRounds, i => i.places[0] - i.places[i.places.length - 1], (a, b) => a > b);
-    const steady = pickBest(withMultipleRounds, i => standardDeviation(i.places), (a, b) => a < b);
+    const steady = pickBest(withAtLeastThreeRounds, i => standardDeviation(i.places), (a, b) => a < b);
+    const decline = pickBest(withMultipleRounds, i => i.places[i.places.length - 1] - i.places[0], (a, b) => a > b);
     const social = pickBest(entries.map(entry => ({ entry, count: opponentsByPlayer[entry.name] ? opponentsByPlayer[entry.name].size : 0 })), i => i.count, (a, b) => a > b);
-    const lastPlace = entries[entries.length - 1];
+    const runnerUp = pickBest(entries.map(entry => ({ entry, count: placeCounts[entry.name]?.[2] || 0 })), i => i.count, (a, b) => a > b);
+    const lucky = pickBest(entries.map(entry => ({ entry, count: tiebreakWins[entry.name] || 0 })), i => i.count, (a, b) => a > b);
+
+    const { biggest: blowout, closest: photoFinish, qualifyingTables } = computeScoreGapExtremes(rounds);
+    const topNames = entries.slice(0, 3).map(entry => entry.name);
+    const giantKillerCounts = computeGiantKillerCounts(rounds, topNames);
+    const giantKiller = pickBest(entries.filter(entry => !topNames.includes(entry.name)).map(entry => ({ entry, count: giantKillerCounts[entry.name] || 0 })), i => i.count, (a, b) => a > b);
+    const rivalry = computeTopRivalry(rounds);
+    const humblestWin = computeHumblestWin(rounds);
+    const tpByPlayer = computeTournamentPointsByPlayer(rounds);
+    const perfectStreak = pickBest(
+        entries
+            .map(entry => ({ entry, tps: tpByPlayer[entry.name] || [] }))
+            .filter(item => item.tps.length >= 2 && item.tps.every(tp => tp > 0)),
+        i => i.tps.length,
+        (a, b) => a > b
+    );
+    const runnerUpPerformance = computeBestRunnerUpPerformance(rounds);
 
     const cards = [];
     if (rollercoaster && rollercoaster.score > 0) {
@@ -365,21 +581,48 @@ function renderConsolationAwards(entries, rounds) {
     if (comeback && comeback.score > 0) {
         cards.push({ icon: '📈', label: 'Najlepszy comeback', name: comeback.item.entry.name, value: `+${comeback.score} miejsc od 1. rundy` });
     }
+    if (decline && decline.score > 0 && (!comeback || decline.item.entry.name !== comeback.item.entry.name)) {
+        cards.push({ icon: '🎇', label: 'Zgasł pod koniec', name: decline.item.entry.name, value: `-${decline.score} miejsc od 1. rundy` });
+    }
     if (steady) {
         cards.push({ icon: '🧊', label: 'Żelazny nerw (najbardziej stabilny)', name: steady.item.entry.name, value: `odch. std. ${steady.score.toFixed(2)}` });
+    }
+    if (runnerUp && runnerUp.score >= 2) {
+        cards.push({ icon: '🥈', label: 'Wieczny wicelider', name: runnerUp.item.entry.name, value: `${runnerUp.score}x 2. miejsce` });
+    }
+    if (lucky && lucky.score > 0) {
+        cards.push({ icon: '🍀', label: 'Farciarz dogrywek', name: lucky.item.entry.name, value: `${lucky.score}x wygrana dogrywka` });
     }
     if (social && social.score > 0) {
         cards.push({ icon: '🎁', label: 'Dusza towarzystwa', name: social.item.entry.name, value: `${social.score} różnych przeciwników` });
     }
-    if (lastPlace) {
-        cards.push({ icon: '🎗️', label: 'Nagroda pocieszenia', name: lastPlace.name, value: 'Za wytrwałość do samego końca!' });
+    if (blowout) {
+        cards.push({ icon: '💥', label: 'Zmiażdżenie stołu', name: blowout.player, value: `+${blowout.gap} pkt przewagi (runda ${blowout.roundIndex + 1})` });
+    }
+    if (giantKiller && giantKiller.score > 0) {
+        cards.push({ icon: '🏹', label: 'Pogromca faworytów', name: giantKiller.item.entry.name, value: `${giantKiller.score}x pokonał gracza z podium` });
+    }
+    if (rivalry && rivalry.count >= 2) {
+        cards.push({ icon: '🤝', label: 'Wieczna rywalizacja', name: `${rivalry.a} vs ${rivalry.b}`, value: `${rivalry.count}x przy stole (${rivalry.aWins}:${rivalry.bWins})` });
+    }
+    if (photoFinish && qualifyingTables >= 2 && (!blowout || photoFinish.gap !== blowout.gap)) {
+        cards.push({ icon: '📸', label: 'Fotograficzny finisz', name: photoFinish.player, value: `${photoFinish.gap} pkt przewagi nad ${photoFinish.opponent} (runda ${photoFinish.roundIndex + 1})` });
+    }
+    if (humblestWin) {
+        cards.push({ icon: '🫡', label: 'Najskromniejsze zwycięstwo', name: humblestWin.player, value: `wygrana z ${humblestWin.score} pkt (runda ${humblestWin.roundIndex + 1})` });
+    }
+    if (perfectStreak) {
+        cards.push({ icon: '🏅', label: 'Perfekcyjna passa', name: perfectStreak.item.entry.name, value: `${perfectStreak.score}/${perfectStreak.score} rund z punktami` });
+    }
+    if (runnerUpPerformance && runnerUpPerformance.norm >= 80) {
+        cards.push({ icon: '🎯', label: 'Prawie było', name: runnerUpPerformance.player, value: `${runnerUpPerformance.norm}% wyniku zwycięzcy, a jednak przegrał(a) (runda ${runnerUpPerformance.roundIndex + 1})` });
     }
 
     if (cards.length === 0) return '';
 
     return `
         <div class="consolation-awards">
-            <h3 style="color: #764ba2; margin-bottom: 14px;">🎉 Nagrody pocieszenia i ciekawostki</h3>
+            <h3 style="color: #764ba2; margin-bottom: 14px;">🎉 Nagrody specjalne i ciekawostki</h3>
             <div class="additional-stats-cards">
                 ${cards.map(card => `
                     <div class="stat-card stat-card-consolation">
